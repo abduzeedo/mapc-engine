@@ -1,0 +1,7 @@
+[
+  {"app_name":"abc123","app_title":"Zed Game","metadata":{"keyImages":[
+    {"type":"DieselGameBox","url":"https://cdn.example/wide.jpg"},
+    {"type":"DieselGameBoxTall","url":"https://cdn.example/tall.jpg"}]}},
+  {"app_name":"def456","app_title":"alpha Game","metadata":{"keyImages":[]}},
+  {"app_name":"ghi789","app_title":"No Metadata"}
+]

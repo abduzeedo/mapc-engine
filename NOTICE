@@ -1,0 +1,7 @@
+MacadeKit, part of MaPC
+Copyright 2026 Steale LLC
+
+This product includes software developed at Steale LLC (https://mapc.games).
+
+game-fixes/witcher3/ffxproxy.c is MIT licensed, Copyright (c) 2026 tholtman1-del (see that folder's LICENSE).
+The engines built by engine/ contain third-party software under their own licenses (see engine/licenses).
