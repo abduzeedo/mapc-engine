@@ -36,20 +36,30 @@ public enum ChromiumHelperWrapper {
         }
     }
 
-    /// Swaps `helper` for `wrapper`, keeping the vendor's binary as `<name>_real.exe`. A helper that is
-    /// already a wrapper (it carries the marker) is only refreshed. Returns true if anything changed.
-    static func wrap(_ helper: URL, with wrapper: Data) throws -> Bool {
+    /// Keep the vendor binary in place until its backup and replacement are ready. A failed write
+    /// leaves a launchable helper, and a previously interrupted swap can recover from `_real.exe`.
+    static func wrap(_ helper: URL, with wrapper: Data, legacyWrapper: Bool = false) throws -> Bool {
         let fm = FileManager.default
-        guard let current = fm.contents(atPath: helper.path) else { return false }
-        if current.range(of: marker) != nil {
+        guard !wrapper.isEmpty else { throw WineRunnerError.launchFailed("the Chromium helper wrapper is empty") }
+        let real = helper.deletingLastPathComponent()
+            .appendingPathComponent(helper.deletingPathExtension().lastPathComponent + "_real.exe")
+        guard let current = fm.contents(atPath: helper.path) else {
+            guard let saved = fm.contents(atPath: real.path), !saved.isEmpty,
+                  saved.range(of: marker) == nil else { return false }
+            try wrapper.write(to: helper, options: .atomic)
+            return true
+        }
+        if current.range(of: marker) != nil || (legacyWrapper && current.count < 500_000) {
+            guard let saved = fm.contents(atPath: real.path), !saved.isEmpty,
+                  saved.range(of: marker) == nil else {
+                throw WineRunnerError.launchFailed("the original Chromium helper is missing; repair Steam to download it again")
+            }
             guard current != wrapper else { return false }
             try wrapper.write(to: helper, options: .atomic)
             return true
         }
-        let real = helper.deletingLastPathComponent()
-            .appendingPathComponent(helper.deletingPathExtension().lastPathComponent + "_real.exe")
-        try? fm.removeItem(at: real)
-        try fm.moveItem(at: helper, to: real)
+        // Atomic writes do not remove either working executable before the new data is durable.
+        try current.write(to: real, options: .atomic)
         try wrapper.write(to: helper, options: .atomic)
         return true
     }

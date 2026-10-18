@@ -83,6 +83,11 @@ public struct SaveBackupStore: Sendable {
     @discardableResult
     public func create(gameID: String, title: String, sources: [SaveSource], roots: SaveRoots,
                        kind: SaveBackupInfo.Kind = .manual, now: Date = Date()) throws -> SaveBackupInfo {
+        try createSnapshot(gameID: gameID, title: title, sources: sources, roots: roots, kind: kind, now: now, pruning: true)
+    }
+
+    private func createSnapshot(gameID: String, title: String, sources: [SaveSource], roots: SaveRoots,
+                                kind: SaveBackupInfo.Kind, now: Date, pruning: Bool) throws -> SaveBackupInfo {
         guard !sources.isEmpty else { throw SaveBackupError.noSources }
         guard FileScan.isDirectory(destination) else { throw SaveBackupError.destinationUnavailable }
         let present = sources.compactMap { source -> (SaveSource, URL)? in
@@ -108,7 +113,7 @@ public struct SaveBackupStore: Sendable {
             let manifest = SaveManifest(gameID: gameID, gameTitle: title, created: now, kind: kind, entries: entries)
             try Self.encoder.encode(manifest).write(to: partial.appendingPathComponent("manifest.json"), options: .atomic)
             try fm.moveItem(at: partial, to: final)
-            prune(gameFolder: gameFolder)
+            if pruning { prune(gameFolder: gameFolder) }
             return Self.info(manifest, folder: final)
         } catch let error as SaveBackupError {
             try? fm.removeItem(at: partial)
@@ -153,8 +158,15 @@ public struct SaveBackupStore: Sendable {
             plan.append((data, target))
         }
         let sources = manifest.entries.map { SaveSource(root: $0.root, path: $0.path) }
-        let safety = try? create(gameID: manifest.gameID, title: manifest.gameTitle, sources: sources, roots: roots,
-                                 kind: .beforeRestore, now: now)
+        let hasCurrentSaves = sources.contains { source in
+            roots.resolve(source).map(FileScan.isDirectory) ?? false
+        }
+        // A disconnected or full backup disk must never turn a restore into an irreversible overwrite.
+        // Delay retention until copying finishes so restoring the oldest retained backup cannot prune itself.
+        let safety = hasCurrentSaves
+            ? try createSnapshot(gameID: manifest.gameID, title: manifest.gameTitle, sources: sources, roots: roots,
+                                 kind: .beforeRestore, now: now, pruning: false)
+            : nil
         var files = 0
         do {
             for item in plan { files += try Self.copyTree(from: item.from, to: item.to, overwrite: true).files }
@@ -162,6 +174,9 @@ public struct SaveBackupStore: Sendable {
             throw error
         } catch {
             throw SaveBackupError.copyFailed(error.localizedDescription)
+        }
+        if let gameFolder = try? folder(for: manifest.gameID, title: manifest.gameTitle, create: false) {
+            prune(gameFolder: gameFolder)
         }
         return RestoreReport(files: files, safetyBackup: safety)
     }

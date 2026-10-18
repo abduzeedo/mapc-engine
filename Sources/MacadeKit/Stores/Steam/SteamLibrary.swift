@@ -12,6 +12,19 @@ public enum SteamLibrary {
 
     /// All installed or installing games across every Steam library folder in the bottle.
     public static func scan(bottle: Bottle) -> [Game] {
+        let dirs = libraryDirectories(bottle: bottle)
+        var games: [Game] = []
+        for dir in dirs {
+            let files = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
+            for file in files where file.lastPathComponent.hasPrefix("appmanifest_") && file.pathExtension == "acf" {
+                if let text = try? String(contentsOf: file, encoding: .utf8),
+                   let game = parseManifest(text, steamapps: dir) { games.append(game) }
+            }
+        }
+        return games.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+    }
+
+    public static func libraryDirectories(bottle: Bottle) -> [URL] {
         let steamapps = bottle.steamDirectory.appendingPathComponent("steamapps")
         var dirs = [steamapps]
         if let text = try? String(contentsOf: steamapps.appendingPathComponent("libraryfolders.vdf"), encoding: .utf8),
@@ -24,15 +37,7 @@ public enum SteamLibrary {
             }
         }
         var seen = Set<String>()
-        var games: [Game] = []
-        for dir in dirs where seen.insert(dir.standardizedFileURL.path).inserted {
-            let files = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
-            for file in files where file.lastPathComponent.hasPrefix("appmanifest_") && file.pathExtension == "acf" {
-                if let text = try? String(contentsOf: file, encoding: .utf8),
-                   let game = parseManifest(text, steamapps: dir) { games.append(game) }
-            }
-        }
-        return games.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+        return dirs.filter { seen.insert($0.standardizedFileURL.path).inserted }
     }
 
     /// Parses one `appmanifest_<id>.acf`. Returns nil for tools and unreadable manifests.

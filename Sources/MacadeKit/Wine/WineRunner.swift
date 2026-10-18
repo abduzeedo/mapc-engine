@@ -125,6 +125,8 @@ public struct WineRunner: Sendable {
             throw WineRunnerError.launchFailed("can't open log file")
         }
 
+        let context = "[MaPC] Launch \(ISO8601DateFormatter().string(from: Date())) engine=\(engine.version) wine=\(engine.info.wineVersion) environment=\(bottle.kind.rawValue) backend=\(profile.backend.resolved().rawValue)\n"
+        try handle.write(contentsOf: Data(context.utf8))
         let process = Process()
         process.executableURL = program
         process.arguments = arguments
@@ -135,6 +137,8 @@ public struct WineRunner: Sendable {
         process.standardOutput = handle
         process.standardError = handle
         process.terminationHandler = { p in
+            let event = "\n[MaPC] Exit \(ISO8601DateFormatter().string(from: Date())) pid=\(p.processIdentifier) status=\(p.terminationStatus) reason=\(p.terminationReason == .uncaughtSignal ? "signal" : "exit")\n"
+            try? handle.write(contentsOf: Data(event.utf8))
             try? handle.close()
             onExit?(p.terminationStatus)
         }
