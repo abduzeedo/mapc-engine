@@ -21,11 +21,21 @@ public struct Bottle: Sendable, Equatable {
 }
 
 public extension Bottle {
-    /// Maps `C:\Program Files (x86)\Steam` to a path inside the bottle. Other drives aren't supported.
+    /// Maps a Windows path to the Mac. `C:` is the bottle's `drive_c`; other drives go where Wine's
+    /// `dosdevices/<drive>` link points (`Z:` is the Mac's `/`, so a Steam library on the Mac's disk or an
+    /// external drive is `Z:\Users\…` or `Z:\Volumes\…`). Nil for a drive the bottle doesn't have.
     func unixURL(forWindowsPath path: String) -> URL? {
         let parts = path.split(whereSeparator: { $0 == "\\" || $0 == "/" }).map(String.init)
-        guard let drive = parts.first, drive.lowercased() == "c:" else { return nil }
-        return parts.dropFirst().reduce(driveC) { $0.appendingPathComponent($1) }
+        guard let drive = parts.first?.lowercased(), drive.count == 2, drive.hasSuffix(":") else { return nil }
+        let root: URL
+        if drive == "c:" {
+            root = driveC
+        } else {
+            let link = url.appendingPathComponent("dosdevices/\(drive)")
+            guard let target = try? FileManager.default.destinationOfSymbolicLink(atPath: link.path) else { return nil }
+            root = URL(fileURLWithPath: target, relativeTo: link.deletingLastPathComponent()).standardizedFileURL
+        }
+        return parts.dropFirst().reduce(root) { $0.appendingPathComponent($1) }
     }
 }
 

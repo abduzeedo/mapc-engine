@@ -138,7 +138,8 @@ public struct EpicProvider: StoreProvider, Sendable {
         process.environment = environment
         let out = Pipe()
         process.standardOutput = out
-        process.standardError = Pipe()
+        // Nothing reads stderr, so it can't be a pipe: once legendary writes ~64 KB there it would block forever.
+        process.standardError = FileHandle.nullDevice
         return try await withCheckedThrowingContinuation { cont in
             DispatchQueue.global().async {
                 do {

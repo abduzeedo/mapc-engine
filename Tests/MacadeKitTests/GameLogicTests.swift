@@ -133,6 +133,20 @@ private func fixtureData(_ name: String) throws -> Data {
         #expect(bottle.unixURL(forWindowsPath: #"C:\Program Files (x86)\Steam"#)?.path == "/h/Bottles/steam/drive_c/Program Files (x86)/Steam")
         #expect(bottle.unixURL(forWindowsPath: #"D:\x"#) == nil)
     }
+
+    @Test func otherDrivesFollowDosdevices() throws {
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: home) }
+        let bottle = Bottle(kind: .steam, paths: Paths(home: home))
+        let dosdevices = bottle.url.appendingPathComponent("dosdevices")
+        try FileManager.default.createDirectory(at: dosdevices, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(atPath: dosdevices.appendingPathComponent("z:").path, withDestinationPath: "/")
+        try FileManager.default.createSymbolicLink(atPath: dosdevices.appendingPathComponent("e:").path, withDestinationPath: "../drive_c/games")
+        #expect(bottle.unixURL(forWindowsPath: #"Z:\Volumes\SSD\SteamLibrary"#)?.path == "/Volumes/SSD/SteamLibrary")
+        #expect(bottle.unixURL(forWindowsPath: #"e:\x"#)?.path == bottle.driveC.appendingPathComponent("games/x").standardizedFileURL.path)
+        #expect(bottle.unixURL(forWindowsPath: #"D:\x"#) == nil)
+        #expect(bottle.unixURL(forWindowsPath: "Steam") == nil)
+    }
 }
 
 @Suite struct LegendaryParserTests {
