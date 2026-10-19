@@ -126,7 +126,7 @@ public struct WineRunner: Sendable {
         }
 
         let backend = profile.backend.resolved()
-        do { try NativeBackendDLLs.install(backend, engine: engine, bottle: bottle) }
+        do { try NativeBackendDLLs.prepare(backend, engine: engine, bottle: bottle) }
         catch {
             try? handle.close()
             throw WineRunnerError.launchFailed("couldn't set up \(backend.displayName): \(error.localizedDescription)")

@@ -50,7 +50,7 @@ import Testing
     @Test func dxvkGoesInNativeForBothArchitectures() throws {
         let (home, engine, bottle) = try fixture()
         defer { try? fm.removeItem(at: home) }
-        try NativeBackendDLLs.install(.dxvk, engine: engine, bottle: bottle)
+        try NativeBackendDLLs.prepare(.dxvk, engine: engine, bottle: bottle)
         #expect(file(bottle, "system32", "d3d11.dll") == dll("dxvk d3d11 x86_64-windows"))
         #expect(file(bottle, "syswow64", "d3d10core.dll") == dll("dxvk d3d10core i386-windows"))
         #expect(file(bottle, "system32", "dxgi.dll") == dll("wine dxgi x86_64-windows", builtin: true))   // not DXVK's
@@ -59,8 +59,8 @@ import Testing
     @Test func dxmtReplacesDXVKAndGetsItsHelperPlaceholder() throws {
         let (home, engine, bottle) = try fixture()
         defer { try? fm.removeItem(at: home) }
-        try NativeBackendDLLs.install(.dxvk, engine: engine, bottle: bottle)
-        try NativeBackendDLLs.install(.dxmt, engine: engine, bottle: bottle)
+        try NativeBackendDLLs.prepare(.dxvk, engine: engine, bottle: bottle)
+        try NativeBackendDLLs.prepare(.dxmt, engine: engine, bottle: bottle)
         let d3d11 = try #require(file(bottle, "syswow64", "d3d11.dll"))
         #expect(d3d11 == NativeBackendDLLs.nativeCopy(of: dll("dxmt d3d11 i386-windows", builtin: true)))
         #expect(d3d11[0x40..<0x50].allSatisfy { $0 == 0 })                                       // loads as native
@@ -73,7 +73,7 @@ import Testing
         let (home, engine, bottle) = try fixture(backends: ["dxvk"])
         defer { try? fm.removeItem(at: home) }
         for backend in [GraphicsBackend.wined3d, .d3dMetal, .dxmt] {   // DXMT's folder exists, but ENGINE.json doesn't list it
-            try NativeBackendDLLs.install(backend, engine: engine, bottle: bottle)
+            try NativeBackendDLLs.prepare(backend, engine: engine, bottle: bottle)
         }
         #expect(file(bottle, "system32", "d3d11.dll") == dll("wine d3d11 x86_64-windows", builtin: true))
         #expect(!NativeBackendDLLs.provides(.dxmt, engine: engine))
@@ -85,8 +85,40 @@ import Testing
         let (home, engine, bottle) = try fixture()
         defer { try? fm.removeItem(at: home) }
         try fm.removeItem(at: NativeBackendDLLs.folder(for: .dxvk, in: engine))
-        try NativeBackendDLLs.install(.dxvk, engine: engine, bottle: bottle)
+        try NativeBackendDLLs.prepare(.dxvk, engine: engine, bottle: bottle)
         #expect(file(bottle, "system32", "d3d11.dll") == dll("wine d3d11 x86_64-windows", builtin: true))
+    }
+
+    @Test func switchingBackOffDXVKPutsWinesCopiesBack() throws {
+        // The bug from testing: DXVK's d3d10core stayed in System32 after switching to a D3DMetal engine, and the
+        // Rockstar launcher (told by WineD3DFallback to prefer native d3d10core) crashed in it.
+        let (home, engine, bottle) = try fixture()
+        defer { try? fm.removeItem(at: home) }
+        try NativeBackendDLLs.prepare(.dxvk, engine: engine, bottle: bottle)
+        let fallbackD3D11 = dll("wine d3d11, written by WineD3DFallback")
+        try fallbackD3D11.write(to: bottle.driveC.appendingPathComponent("windows/system32/d3d11.dll"))
+        try NativeBackendDLLs.prepare(.d3dMetal, engine: engine, bottle: bottle)
+        #expect(file(bottle, "system32", "d3d10core.dll") == dll("wine d3d10core x86_64-windows", builtin: true))
+        #expect(file(bottle, "syswow64", "d3d11.dll") == dll("wine d3d11 i386-windows", builtin: true))
+        #expect(file(bottle, "system32", "d3d11.dll") == fallbackD3D11)                    // not ours any more
+        #expect(file(bottle, "system32", NativeBackendDLLs.record) == nil)
+        #expect(file(bottle, "syswow64", NativeBackendDLLs.record) == nil)
+    }
+
+    @Test func dxmtToDXVKTakesBackDXMTsDXGI() throws {
+        let (home, engine, bottle) = try fixture()
+        defer { try? fm.removeItem(at: home) }
+        try NativeBackendDLLs.prepare(.dxmt, engine: engine, bottle: bottle)
+        try NativeBackendDLLs.prepare(.dxvk, engine: engine, bottle: bottle)
+        #expect(file(bottle, "system32", "dxgi.dll") == dll("wine dxgi x86_64-windows", builtin: true))
+        #expect(file(bottle, "system32", "d3d11.dll") == dll("dxvk d3d11 x86_64-windows"))
+        try NativeBackendDLLs.prepare(.wined3d, engine: engine, bottle: bottle)
+        for folder in ["system32", "syswow64"] {
+            let arch = folder == "system32" ? "x86_64-windows" : "i386-windows"
+            for m in ["d3d11", "d3d10core", "dxgi"] {
+                #expect(file(bottle, folder, "\(m).dll") == dll("wine \(m) \(arch)", builtin: true), "\(folder)/\(m)")
+            }
+        }
     }
 
     @Test func nativeCopyLeavesNativeDLLsUnchanged() {
