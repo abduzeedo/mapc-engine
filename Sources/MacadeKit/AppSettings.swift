@@ -37,6 +37,11 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var backupFolder: URL?
     /// The version of the license agreement the user agreed to (`EULA.version` in the app). `nil` until they do.
     public var acceptedEULA: String?
+    /// The graphics backend (`GraphicsBackend` raw value) Steam was last started with. Steam's games inherit it,
+    /// so a game that needs another one means restarting Steam. `nil`: not recorded yet.
+    public var steamBackend: String?
+    /// Restart Steam without asking when a game needs a different graphics backend. `nil` means ask.
+    public var restartSteamForGraphics: Bool?
 
     public init() {}
 }

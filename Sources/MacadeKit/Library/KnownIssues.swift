@@ -12,7 +12,7 @@ public enum KnownIssues {
 
     /// Shown for 32-bit Direct3D 10/11 games (found by `GraphicsProbe`) while no engine runs them (DXMT).
     public static let needs32BitDirect3D11Engine =
-        "This is a 32-bit DirectX 10/11 game. MaPC can't run these yet, so it will close right after it starts."
+        "This is a 32-bit DirectX 10/11 game. It needs MaPC's extended engine, a free download; without it the game closes right after it starts."
 
     public static func note(for game: Game, remote: [String: String]? = nil, probe: GraphicsProbe? = nil,
                             d3dMetalAvailable: Bool = false, dxmtAvailable: Bool = false) -> String? {
