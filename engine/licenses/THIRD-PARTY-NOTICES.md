@@ -32,6 +32,7 @@ providing it: email support@mapc.games.
 | Wine (CodeWeavers CrossOver 26.3.0 source) | 2.x | LGPL-2.1-or-later | Wine-COPYING.LIB.txt, Wine-LICENSE.txt |
 | Wine Staging 11.18 | 1.x | LGPL-2.1-or-later | Wine-COPYING.LIB.txt, Wine-LICENSE.txt |
 | DXVK (macOS, async) 1.10.3 | 1.x | zlib | DXVK-LICENSE.txt |
+| winpthreads (mingw-w64 11.0.1, linked into DXVK's DLLs) | 1.x | MIT-style and BSD-style | winpthreads-COPYING.txt |
 | DXMT 0.80 | 2.x | MIT | DXMT-LICENSE.txt |
 | LLVM 15 (inside DXMT's `winemetal.so`) | 2.x | Apache-2.0 WITH LLVM-exception | LLVM-LICENSE.txt |
 | DXBC parser (Microsoft, inside DXMT) | 2.x | MIT | DXBCParser-LICENSE.txt |
