@@ -31,6 +31,11 @@ CX_SHA="ac99c8ca4b3848f3e81784135f023df266b61c2345726ea55a50b3e030dd6872"
 RUNTIME_NAME="wine-staging-11.18-osx64.tar.xz"        # same pin as build-engine.sh
 RUNTIME_URL="https://github.com/Gcenx/macOS_Wine_builds/releases/download/11.18/$RUNTIME_NAME"
 RUNTIME_SHA="b63704b91af269bc026a87f12bd297c4a50caaf570c322e600b6621ef918f127"
+# DXMT (Direct3D 10/11 on Metal; the only path for 32-bit D3D10/11 games). v0.80 is the last MIT release
+# (later ones are LGPL). It needs winemac's `macdrv_functions` table, which CrossOver's Wine has (d3dmetal.c).
+DXMT_NAME="dxmt-v0.80-builtin.tar.gz"
+DXMT_URL="https://github.com/3Shain/dxmt/releases/download/v0.80/$DXMT_NAME"
+DXMT_SHA="8f260e36b5739e68f3bad613381441385c4dc7b85b78ba8de653d5a6a264529d"
 command -v x86_64-w64-mingw32-gcc >/dev/null || { echo "need mingw-w64 (brew install mingw-w64)" >&2; exit 1; }
 BREW="$(brew --prefix)"
 [ -x "$BREW/opt/bison/bin/bison" ] || { echo "need bison >= 3 (brew install bison)" >&2; exit 1; }
@@ -42,6 +47,7 @@ fetch() { # name url sha
 }
 fetch "$CX_NAME" "$CX_URL" "$CX_SHA"
 fetch "$RUNTIME_NAME" "$RUNTIME_URL" "$RUNTIME_SHA"
+fetch "$DXMT_NAME" "$DXMT_URL" "$DXMT_SHA"
 
 # --- 1. Runtime libraries (x86_64) from the pinned Gcenx build -----------------------------------------
 rm -rf "$WORK/runtime" && mkdir -p "$WORK/runtime"
@@ -113,6 +119,20 @@ for bin in "$W"/bin/wine "$W"/bin/wineserver "$W"/lib/wine/x86_64-unix/*; do
   fi
 done
 
+# DXMT. d3d11/d3d10core/dxgi go beside Wine (lib/dxmt) and into each environment as native DLLs at launch
+# (NativeBackendDLLs), so they never replace Wine's or D3DMetal's. winemetal (its bridge to Metal) is a
+# builtin. NVIDIA's DLSS/NVAPI stand-ins (nvngx, nvapi64) are left out.
+tar -xzf "$CACHE/$DXMT_NAME" -C "$WORK"
+DXMT="$WORK/v0.80"
+for arch in x86_64 i386; do
+  mkdir -p "$W/lib/dxmt/$arch-windows"
+  cp "$DXMT/$arch-windows/"{d3d11,d3d10core,dxgi}.dll "$W/lib/dxmt/$arch-windows/"
+  cp "$DXMT/$arch-windows/winemetal.dll" "$W/lib/wine/$arch-windows/"
+done
+cp "$DXMT/x86_64-unix/winemetal.so" "$W/lib/wine/x86_64-unix/"
+nm -gU "$W/lib/wine/x86_64-unix/winemac.so" | grep -q " _macdrv_functions$" \
+  || { echo "winemac.so doesn't export macdrv_functions; DXMT can't create its Metal view" >&2; exit 1; }
+
 # Steam web helper wrapper (software rendering for Steam's CEF UI, spike finding).
 x86_64-w64-mingw32-gcc -O2 -Wall -municode -mwindows -static -o "$ENG/steamwebhelper-wrapper.exe" steamwebhelper-wrapper/wrapper.c
 
@@ -127,12 +147,13 @@ Wine (LGPL-2.1+), built unmodified from CodeWeavers' CrossOver $CX_VERSION sourc
   (sha256 $CX_SHA). That tarball is also published with this engine's release:
   https://github.com/abduzeedo/mapc-site/releases/tag/engine-$VERSION
   The build script is in build/ (build-engine-d3dmetal.sh), with the runtime pins it uses.
+DXMT v0.80 (MIT), unmodified from $DXMT_URL (sha256 $DXMT_SHA).
 No Apple software is included. DirectX 12 uses Apple's D3DMetal, which MaPC copies from the user's own
   download of Apple's Game Porting Toolkit; the user's use of it is governed by Apple's license.
 Source offer: support@mapc.games, for at least three years (see THIRD-PARTY-NOTICES.md).
 TXT
 cat > "$ENG/ENGINE.json" <<JSON
-{ "version": "$VERSION", "wineVersion": "11.0, from CrossOver $CX_VERSION source", "backends": ["d3dMetal"], "minMacOS": "14.0" }
+{ "version": "$VERSION", "wineVersion": "11.0, from CrossOver $CX_VERSION source", "backends": ["d3dMetal", "dxmt"], "minMacOS": "14.0" }
 JSON
 
 # --- 4. Package and add to the manifest ----------------------------------------------------------------
@@ -141,5 +162,5 @@ rm -f "$ARCHIVE"
 XZ_OPT="-T0 -6" tar -cJf "$ARCHIVE" -C "$ENG" .
 SHA="$(shasum -a 256 "$ARCHIVE" | cut -d' ' -f1)"; SIZE="$(stat -f%z "$ARCHIVE")"
 BASE="${MANIFEST_BASE_URL:-file://$OUT}"
-./manifest-add.py "$OUT/engine-manifest.json" "$VERSION" "$BASE/macade-engine-$VERSION.tar.xz" "$SHA" "$SIZE" d3dMetal
+./manifest-add.py "$OUT/engine-manifest.json" "$VERSION" "$BASE/macade-engine-$VERSION.tar.xz" "$SHA" "$SIZE" d3dMetal,dxmt
 echo "engine:   $ARCHIVE ($((SIZE / 1048576)) MB)"; echo "sha256:   $SHA"; echo "manifest: $OUT/engine-manifest.json"

@@ -17,6 +17,9 @@ from the user's own download of Apple's Game Porting Toolkit; the user's use of 
   below) are Gcenx's macOS builds, version 11.18: https://github.com/Gcenx/macOS_Wine_builds/releases/tag/11.18
   (libraries built with MacPorts; their sources are MacPorts' distfiles for those versions).
 - **DXVK** in engine 1.x: https://github.com/Gcenx/DXVK-macOS/releases/tag/v1.10.3-20230507-repack
+- **DXMT** in engine 2.x: v0.80, the unmodified release build from https://github.com/3Shain/dxmt/releases/tag/v0.80
+  (source: https://github.com/3Shain/dxmt/tree/v0.80). Its `winemetal.so` contains LLVM 15, its shader converter
+  contains Microsoft's DXBC parser, and parts of it are derived from DXVK.
 
 **Written offer.** For at least three years after we last distribute an engine, anyone who received it can ask us
 for the complete corresponding source code of any LGPL or GPL component in it, for no more than the cost of
@@ -29,6 +32,10 @@ providing it: email support@mapc.games.
 | Wine (CodeWeavers CrossOver 26.3.0 source) | 2.x | LGPL-2.1-or-later | Wine-COPYING.LIB.txt, Wine-LICENSE.txt |
 | Wine Staging 11.18 | 1.x | LGPL-2.1-or-later | Wine-COPYING.LIB.txt, Wine-LICENSE.txt |
 | DXVK (macOS, async) 1.10.3 | 1.x | zlib | DXVK-LICENSE.txt |
+| DXMT 0.80 | 2.x | MIT | DXMT-LICENSE.txt |
+| LLVM 15 (inside DXMT's `winemetal.so`) | 2.x | Apache-2.0 WITH LLVM-exception | LLVM-LICENSE.txt |
+| DXBC parser (Microsoft, inside DXMT) | 2.x | MIT | DXBCParser-LICENSE.txt |
+| DXVK-derived code in DXMT | 2.x | zlib | DXVK-LICENSE.txt |
 | MoltenVK | both | Apache-2.0 | MoltenVK-LICENSE.txt |
 | Vulkan Loader | both | Apache-2.0 | Vulkan-Loader-LICENSE.txt |
 | SDL2 | both | zlib | SDL2-LICENSE.txt |
