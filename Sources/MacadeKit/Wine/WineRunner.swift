@@ -125,7 +125,14 @@ public struct WineRunner: Sendable {
             throw WineRunnerError.launchFailed("can't open log file")
         }
 
-        let context = "[MaPC] Launch \(ISO8601DateFormatter().string(from: Date())) engine=\(engine.version) wine=\(engine.info.wineVersion) environment=\(bottle.kind.rawValue) backend=\(profile.backend.resolved().rawValue)\n"
+        let backend = profile.backend.resolved()
+        do { try NativeBackendDLLs.install(backend, engine: engine, bottle: bottle) }
+        catch {
+            try? handle.close()
+            throw WineRunnerError.launchFailed("couldn't set up \(backend.displayName): \(error.localizedDescription)")
+        }
+
+        let context = "[MaPC] Launch \(ISO8601DateFormatter().string(from: Date())) engine=\(engine.version) wine=\(engine.info.wineVersion) environment=\(bottle.kind.rawValue) backend=\(backend.rawValue)\n"
         try handle.write(contentsOf: Data(context.utf8))
         let process = Process()
         process.executableURL = program
