@@ -37,7 +37,9 @@ public struct Mapc {
             let probe = GraphicsProbe.scan(URL(fileURLWithPath: folder, isDirectory: true))
             print("DirectX 12:        \(probe.usesDirectX12 ? "yes" : "no")")
             print("64-bit executable: \(probe.has64BitExecutable ? "yes" : "no")")
-            print("Automatic picks:   \(GraphicsBackend.auto.resolved(for: probe, d3dMetalAvailable: d3dMetalInstalled).displayName)")
+            print("32-bit D3D10/11:   \(probe.uses32BitDirect3D11 ? "yes" : "no")")
+            let auto = GraphicsBackend.auto.resolved(for: probe, d3dMetalAvailable: d3dMetalInstalled, dxmtAvailable: dxmtInstalled)
+            print("Automatic picks:   \(auto.displayName)")
         case .env(let options):
             let (engine, profile) = try resolve(options)
             let env = WineRunner.environment(bottle: Bottle(kind: options.bottle, paths: paths), profile: profile, engine: engine)
@@ -50,12 +52,13 @@ public struct Mapc {
     }
 
     var d3dMetalInstalled: Bool { EngineLocator(paths: paths).installed().contains { $0.supports(.d3dMetal) } }
+    var dxmtInstalled: Bool { EngineLocator(paths: paths).installed().contains { $0.supports(.dxmt) } }
 
     /// The engine and profile for these options, the way the app resolves them before Play.
     func resolve(_ options: Options) throws -> (Engine, LaunchProfile) {
         var profile = options.profile
         let probe = options.gameFolder.map { GraphicsProbe.scan(URL(fileURLWithPath: $0, isDirectory: true)) }
-        profile.backend = profile.backend.resolved(for: probe, d3dMetalAvailable: d3dMetalInstalled)
+        profile.backend = profile.backend.resolved(for: probe, d3dMetalAvailable: d3dMetalInstalled, dxmtAvailable: dxmtInstalled)
         let settings = JSONStore<AppSettings>(url: paths.settingsFile).load(default: AppSettings())
         let locator = EngineLocator(paths: paths)
         let engine = try EngineChoice.pick(

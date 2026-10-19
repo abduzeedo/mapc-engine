@@ -62,6 +62,10 @@ private func fixtureData(_ name: String) throws -> Data {
         #expect(GraphicsBackend.auto.resolved(for: dx11, d3dMetalAvailable: true) == .dxvk)   // verified games keep DXVK
         #expect(GraphicsBackend.auto.resolved(for: nil, d3dMetalAvailable: true) == .dxvk)
         #expect(GraphicsBackend.dxvk.resolved(for: dx12, d3dMetalAvailable: true) == .dxvk)   // the user's choice wins
+        let d3d11x86 = GraphicsProbe(uses32BitDirect3D11: true)
+        #expect(GraphicsBackend.auto.resolved(for: d3d11x86, dxmtAvailable: true) == .dxmt)
+        #expect(GraphicsBackend.auto.resolved(for: d3d11x86, dxmtAvailable: false) == .dxvk)
+        #expect(GraphicsBackend.auto.resolved(for: dx11, dxmtAvailable: true) == .dxvk)
     }
 
     @Test func d3dMetalGetsCrossOverVariablesFromItsEngine() throws {
@@ -232,6 +236,9 @@ private func fixtureData(_ name: String) throws -> Data {
         #expect(KnownIssues.note(for: witcher, probe: dx12, d3dMetalAvailable: true) == nil)
         #expect(KnownIssues.note(for: witcher, probe: GraphicsProbe(), d3dMetalAvailable: false) == nil)
         #expect(KnownIssues.note(for: witcher) == nil)                                    // not probed yet
+        let d3d11x86 = GraphicsProbe(uses32BitDirect3D11: true)
+        #expect(KnownIssues.note(for: witcher, probe: d3d11x86) == KnownIssues.needs32BitDirect3D11Engine)
+        #expect(KnownIssues.note(for: witcher, probe: d3d11x86, dxmtAvailable: true) == nil)
     }
 }
 

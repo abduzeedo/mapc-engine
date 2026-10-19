@@ -91,9 +91,42 @@ func makePE(machine: UInt16 = 0x8664, imports: [String] = [], delayImports: [Str
     }
 
     @Test func directX11GameIsNotDirectX12() throws {
-        let dir = try gameFolder(["Game.exe": big(makePE(machine: 0x014c, imports: ["d3d11.dll"]))])
+        let dir = try gameFolder(["Game.exe": big(makePE(imports: ["d3d11.dll"]))])
         defer { try? FileManager.default.removeItem(at: dir) }
-        #expect(GraphicsProbe.scan(dir) == GraphicsProbe(usesDirectX12: false, has64BitExecutable: false))
+        #expect(GraphicsProbe.scan(dir) == GraphicsProbe(usesDirectX12: false, has64BitExecutable: true))
+    }
+
+    @Test func finds32BitDirect3D11Game() throws {
+        let dir = try gameFolder(["TLS.exe": big(makePE(machine: 0x014c, imports: ["kernel32.dll", "d3d11.dll"]))])
+        defer { try? FileManager.default.removeItem(at: dir) }
+        #expect(GraphicsProbe.scan(dir) == GraphicsProbe(uses32BitDirect3D11: true))
+    }
+
+    @Test func runtimeLoaded32BitDirect3D11IsFoundByEntryPoint() throws {
+        let dir = try gameFolder(["game.exe": big(makePE(machine: 0x014c, imports: ["kernel32.dll"])) + Data("D3D11CreateDevice\0".utf8)])
+        defer { try? FileManager.default.removeItem(at: dir) }
+        #expect(GraphicsProbe.scan(dir).uses32BitDirect3D11)
+    }
+
+    @Test func thirtyTwoBitUnityPlayerCounts() throws {
+        // Unity's exe is a stub under the size cut-off; the engine is UnityPlayer.dll.
+        let dir = try gameFolder(["Game.exe": makePE(machine: 0x014c), "UnityPlayer.dll": makePE(machine: 0x014c, imports: ["d3d11.dll"])])
+        defer { try? FileManager.default.removeItem(at: dir) }
+        #expect(GraphicsProbe.scan(dir).uses32BitDirect3D11)
+    }
+
+    @Test func gamesWithA64BitBuildOrOtherAPIsAreNot32BitDirect3D11() throws {
+        let both = try gameFolder([
+            "bin32/game.exe": big(makePE(machine: 0x014c, imports: ["d3d11.dll"])),
+            "bin64/game.exe": big(makePE(imports: ["d3d11.dll"])),
+        ])
+        let unity64 = try gameFolder(["Game.exe": makePE(), "UnityPlayer.dll": makePE(imports: ["d3d11.dll"])])
+        let dx9 = try gameFolder(["COI.exe": big(makePE(machine: 0x014c, imports: ["d3d9.dll"]))])
+        defer { for d in [both, unity64, dx9] { try? FileManager.default.removeItem(at: d) } }
+        #expect(!GraphicsProbe.scan(both).uses32BitDirect3D11)
+        #expect(!GraphicsProbe.scan(unity64).uses32BitDirect3D11)
+        #expect(GraphicsProbe.scan(unity64).has64BitExecutable)
+        #expect(!GraphicsProbe.scan(dx9).uses32BitDirect3D11)
     }
 
     @Test func agilitySDKFolderMeansDirectX12() throws {

@@ -15,10 +15,14 @@ public enum GraphicsBackend: String, Codable, Sendable, CaseIterable {
 
     /// Resolves `.auto` for a game. DXVK (on DXVK-macOS 1.10.3) only reaches Direct3D 11 feature level 11.0
     /// and has no Direct3D 12, so DirectX 12 games go to Apple's D3DMetal whenever an engine provides it.
+    /// 32-bit Direct3D 10/11 games go to DXMT, the only backend that can create their device (see `GraphicsProbe`).
     /// Everything else stays on DXVK, which is what the games verified so far were tested with.
-    public func resolved(for probe: GraphicsProbe? = nil, d3dMetalAvailable: Bool = false) -> GraphicsBackend {
+    public func resolved(for probe: GraphicsProbe? = nil, d3dMetalAvailable: Bool = false,
+                         dxmtAvailable: Bool = false) -> GraphicsBackend {
         guard self == .auto else { return self }
-        return d3dMetalAvailable && probe?.usesDirectX12 == true ? .d3dMetal : .dxvk
+        if d3dMetalAvailable && probe?.usesDirectX12 == true { return .d3dMetal }
+        if dxmtAvailable && probe?.uses32BitDirect3D11 == true { return .dxmt }
+        return .dxvk
     }
 
     /// Extra `WINEDLLOVERRIDES` entries and environment for this backend.
