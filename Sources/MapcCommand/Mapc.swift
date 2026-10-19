@@ -40,6 +40,17 @@ public struct Mapc {
             print("32-bit D3D10/11:   \(probe.uses32BitDirect3D11 ? "yes" : "no")")
             let auto = GraphicsBackend.auto.resolved(for: probe, d3dMetalAvailable: d3dMetalInstalled, dxmtAvailable: dxmtInstalled)
             print("Automatic picks:   \(auto.displayName)")
+        case .diagnose(let path):
+            guard let text = LogDiagnosis.read(URL(fileURLWithPath: path)) else { throw UsageError("can't read: \(path)") }
+            let d = LogDiagnosis(log: text)
+            if let l = d.launch {
+                print("Launch: engine \(l.engine ?? "?"), backend \(l.backend ?? "?"), exit \(l.status.map(String.init) ?? "?")\(l.bySignal ? " (signal)" : "")\(l.seconds.map { ", \(Int($0)) s" } ?? "")")
+            }
+            if d.findings.isEmpty { print("No known problem found.") }
+            for f in d.findings {
+                print("- \(f.title) [\(f.id)] -> \(f.action)")
+                if let e = f.evidence { print("    \(e)") }
+            }
         case .env(let options):
             let (engine, profile) = try resolve(options)
             let env = WineRunner.environment(bottle: Bottle(kind: options.bottle, paths: paths), profile: profile, engine: engine)

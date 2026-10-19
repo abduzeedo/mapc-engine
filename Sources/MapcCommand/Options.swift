@@ -6,6 +6,7 @@ public enum Command: Equatable {
     case help
     case engines
     case probe(folder: String)
+    case diagnose(log: String)
     case env(Options)
     case run(Options, program: String, arguments: [String])
 }
@@ -47,6 +48,7 @@ public enum Parser {
     USAGE
       mapc engines                          installed engines
       mapc probe <game folder>              what the game's files say about its graphics
+      mapc diagnose <log file>              known problems in a launch log
       mapc env [options]                    the environment Wine would get
       mapc run [options] <program> [args]   run a program (Windows path, or a Mac path inside the environment)
 
@@ -73,6 +75,9 @@ public enum Parser {
         case "probe":
             guard rest.count == 1 else { throw UsageError("probe needs one game folder") }
             return .probe(folder: rest[0])
+        case "diagnose":
+            guard rest.count == 1 else { throw UsageError("diagnose needs one log file") }
+            return .diagnose(log: rest[0])
         case "env":
             let options = try parseOptions(&rest)
             guard rest.isEmpty else { throw UsageError("unexpected argument: \(rest[0])") }
