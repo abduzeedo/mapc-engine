@@ -154,6 +154,11 @@ x86_64-w64-mingw32-gcc -O2 -Wall -municode -mwindows -static -o "$ENG/steamwebhe
 # the LGPL's "scripts used to control compilation" ship with the binaries.
 mkdir -p "$ENG/licenses/build"
 cp licenses/* "$ENG/licenses/"
+# Libraries Wine builds into its own DLLs (libs/ in the CrossOver source this engine is built from).
+mkdir -p "$ENG/licenses/wine-libs"
+for f in "$WORK"/sources/wine/libs/*/{COPYING,LICENSE,COPYRIGHT}*; do
+  [ -f "$f" ] && cp "$f" "$ENG/licenses/wine-libs/$(basename "$(dirname "$f")")-$(basename "$f").txt"
+done
 cp build-engine-d3dmetal.sh manifest-add.py steamwebhelper-wrapper/wrapper.c "$ENG/licenses/build/"
 cat > "$ENG/licenses/NOTICE.txt" <<TXT
 MaPC engine $VERSION. Third-party software and licenses: THIRD-PARTY-NOTICES.md (this folder).
