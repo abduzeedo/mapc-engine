@@ -42,6 +42,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var steamBackend: String?
     /// Restart Steam without asking when a game needs a different graphics backend. `nil` means ask.
     public var restartSteamForGraphics: Bool?
+    /// Use the user's own Intel Homebrew ffmpeg@7 for video (all formats) instead of the engines' patent-cleared one.
+    public var useHomebrewFFmpeg: Bool?
 
     public init() {}
 }

@@ -55,6 +55,8 @@ tar -xJf "$CACHE/$RUNTIME_NAME" -C "$WORK/runtime"
 RLIB="$(ls -d "$WORK"/runtime/*.app/Contents/Resources/wine/lib)"
 # Link-time copies carry `@rpath/libX.N.dylib` ids so configure records versioned sonames.
 DEPS="$WORK/deps"; rm -rf "$DEPS" && mkdir -p "$DEPS/lib" "$DEPS/include"
+# FFmpeg (LGPL, patent-cleared decoders) for Wine's video playback; see build-ffmpeg.sh.
+FFMPEG="$WORK/ffmpeg"; CACHE_DIR="$CACHE" ./build-ffmpeg.sh "$FFMPEG" >/dev/null
 for pair in libgnutls:libgnutls.30 libfreetype:libfreetype.6 libSDL2:libSDL2-2.0.0 libvulkan:libvulkan.1 libMoltenVK:libMoltenVK; do
   cp "$RLIB/${pair#*:}.dylib" "$DEPS/lib/${pair%%:*}.dylib"; chmod u+w "$DEPS/lib/${pair%%:*}.dylib"
   install_name_tool -id "@rpath/${pair#*:}.dylib" "$DEPS/lib/${pair%%:*}.dylib" 2>/dev/null
@@ -74,6 +76,7 @@ if [ "${RESUME:-0}" != 1 ] || [ ! -f "$WORK/build/Makefile" ]; then
       CC="clang -arch x86_64" CXX="clang++ -arch x86_64" OBJC="clang -arch x86_64" \
       FREETYPE_CFLAGS="-I$DEPS/include/freetype2" FREETYPE_LIBS="-L$DEPS/lib -lfreetype" \
       GNUTLS_CFLAGS="-I$DEPS/include" GNUTLS_LIBS="-L$DEPS/lib -lgnutls" \
+      FFMPEG_CFLAGS="-I$FFMPEG/include" FFMPEG_LIBS="-L$FFMPEG/lib -lavutil -lavformat -lavcodec" \
       SDL2_CFLAGS="-I$DEPS/include/SDL2 -D_THREAD_SAFE" SDL2_LIBS="-L$DEPS/lib -lSDL2" \
       LDFLAGS="-L$DEPS/lib -Wl,-rpath,@loader_path/../../" \
       ac_cv_func_pipe2=no \
@@ -82,7 +85,7 @@ if [ "${RESUME:-0}" != 1 ] || [ ! -f "$WORK/build/Makefile" ]; then
         --with-mingw --with-freetype --with-gnutls --with-sdl --with-vulkan --with-coreaudio --with-opencl --with-unwind \
         --without-x --without-wayland --without-alsa --without-oss --without-udev --without-v4l2 --without-capi \
         --without-inotify --without-pulse --without-dbus --without-netapi --without-krb5 --without-gssapi \
-        --without-fontconfig --without-sane --without-gphoto --without-gstreamer --without-ffmpeg --without-usb \
+        --without-fontconfig --without-sane --without-gphoto --without-gstreamer --with-ffmpeg --without-usb \
         > configure.out 2>&1 ) || { echo "configure failed; see $WORK/build/configure.out" >&2; exit 1; }
 fi
 # Build-time tools (sfnt2fon links FreeType) get the same `@loader_path/../../` rpath as Wine's modules;
@@ -113,6 +116,9 @@ W="$ENG/wine"
 rm -rf "$W/include" "$W/share/man" "$W/share/applications"      # build-time only
 find "$W/lib/wine" -name "*.a" -delete
 cp -a "$RLIB"/*.dylib "$W/lib/"
+cp -a "$FFMPEG"/lib/libav*.dylib "$W/lib/"
+otool -L "$W/lib/wine/x86_64-unix/winedmo.so" | grep -q '@rpath/libavcodec.61.dylib' \
+  || { echo "winedmo.so isn't linked to FFmpeg; video playback would fail" >&2; exit 1; }
 # Wine dlopens these by leaf name, which dyld resolves through the calling module's rpaths. Wine adds
 # `@loader_path/`; LDFLAGS above adds `@loader_path/../../` (= wine/lib, like the 1.x engine). Check it,
 # since a missing rpath only shows up later as broken fonts or TLS.
@@ -159,7 +165,7 @@ mkdir -p "$ENG/licenses/wine-libs"
 for f in "$WORK"/sources/wine/libs/*/{COPYING,LICENSE,COPYRIGHT}*; do
   [ -f "$f" ] && cp "$f" "$ENG/licenses/wine-libs/$(basename "$(dirname "$f")")-$(basename "$f").txt"
 done
-cp build-engine-d3dmetal.sh manifest-add.py steamwebhelper-wrapper/wrapper.c "$ENG/licenses/build/"
+cp build-engine-d3dmetal.sh manifest-add.py build-ffmpeg.sh ffmpeg-decoders.txt steamwebhelper-wrapper/wrapper.c "$ENG/licenses/build/"
 cat > "$ENG/licenses/NOTICE.txt" <<TXT
 MaPC engine $VERSION. Third-party software and licenses: THIRD-PARTY-NOTICES.md (this folder).
 Wine (LGPL-2.1+), built unmodified from CodeWeavers' CrossOver $CX_VERSION source: $CX_URL

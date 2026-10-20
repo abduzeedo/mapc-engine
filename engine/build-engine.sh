@@ -41,6 +41,9 @@ else echo "need mingw-w64 (brew install mingw-w64) to build the wrapper" >&2; ex
 ENG="$WORK/engine"; mkdir -p "$ENG"
 tar -xJf "$CACHE/$WINE_NAME" -C "$ENG"
 APP="$(ls -d "$ENG"/*.app | head -1)"; LIB="$APP/Contents/Resources/wine/lib/wine"
+# Wine Staging's winedmo.so links FFmpeg 7 (libavcodec 61) but the release doesn't include it: video playback failed.
+CACHE_DIR="$CACHE" ./build-ffmpeg.sh "$WORK/ffmpeg" >/dev/null
+cp -a "$WORK"/ffmpeg/lib/libav*.dylib "$LIB/x86_64-unix/"   # winedmo.so only searches @loader_path/
 tar -xzf "$CACHE/$DXVK_NAME" -C "$WORK"
 DX="$(ls -d "$WORK"/dxvk-macOS*/ | head -1)"
 # Copied into each environment as native DLLs at launch (NativeBackendDLLs); Wine's builtins stay untouched.
@@ -52,7 +55,7 @@ mkdir -p "$ENG/licenses/build"
 cp licenses/* "$ENG/licenses/"
 # Libraries Wine builds into its own DLLs (libs/ in Wine's source), from upstream Wine 11.18.
 mkdir -p "$ENG/licenses/wine-libs"; cp licenses-wine-11.18-libs/* "$ENG/licenses/wine-libs/"
-cp build-engine.sh manifest-add.py steamwebhelper-wrapper/wrapper.c "$ENG/licenses/build/"
+cp build-engine.sh manifest-add.py build-ffmpeg.sh ffmpeg-decoders.txt steamwebhelper-wrapper/wrapper.c "$ENG/licenses/build/"
 cat > "$ENG/ENGINE.json" <<JSON
 { "version": "$VERSION", "wineVersion": "11.18 (Staging)", "backends": ["dxvk"], "minMacOS": "15.0" }
 JSON
