@@ -42,6 +42,35 @@ providing it: email support@mapc.games.
 | SDL2 | both | zlib | SDL2-LICENSE.txt |
 | FreeType | both | FreeType License (FTL) | freetype-LICENSE.txt |
 
+### Libraries inside Wine's own DLLs (both engines)
+
+Wine builds these from its own source tree (`libs/`) into its DLLs. Their license texts are in `wine-libs/`
+(for engine 2.x copied from the CrossOver source it is built from; for engine 1.x from Wine 11.18). Their source
+is part of Wine's source, under **Source code** above.
+
+| Library | License |
+|---|---|
+| FAudio | zlib |
+| FFmpeg (engine 1.x) | LGPL-2.1-or-later |
+| FluidSynth | LGPL-2.1-or-later |
+| GSM 06.10 | GSM license (notice required) |
+| libjpeg (Independent JPEG Group) | IJG license |
+| jxrlib (JPEG XR) | BSD-2-Clause |
+| Little CMS (lcms2) | MIT |
+| OpenLDAP (client) | OpenLDAP Public License 2.8 |
+| mpg123 | LGPL-2.1 |
+| musl (math functions) | MIT |
+| libpng | libpng License |
+| libtiff | libtiff license |
+| vkd3d | LGPL-2.1-or-later |
+| libxml2, libxslt | MIT |
+| zlib | zlib |
+| Capstone | BSD-3-Clause (and LLVM's license) |
+| compiler-rt, libc++, libc++abi, libunwind | Apache-2.0 WITH LLVM-exception |
+| ICU | Unicode License v3 |
+| SymCrypt (engine 1.x) | MIT |
+| LibTomCrypt (where present) | public domain / Unlicense |
+
 ### Runtime libraries (both engines)
 
 | Library | License | Text |

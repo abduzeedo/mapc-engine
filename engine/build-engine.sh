@@ -50,6 +50,8 @@ cp "$WRAPPER" "$ENG/steamwebhelper-wrapper.exe"
 # License texts and notices for everything in the engine (licenses/), plus how this build was made.
 mkdir -p "$ENG/licenses/build"
 cp licenses/* "$ENG/licenses/"
+# Libraries Wine builds into its own DLLs (libs/ in Wine's source), from upstream Wine 11.18.
+mkdir -p "$ENG/licenses/wine-libs"; cp licenses-wine-11.18-libs/* "$ENG/licenses/wine-libs/"
 cp build-engine.sh manifest-add.py steamwebhelper-wrapper/wrapper.c "$ENG/licenses/build/"
 cat > "$ENG/ENGINE.json" <<JSON
 { "version": "$VERSION", "wineVersion": "11.18 (Staging)", "backends": ["dxvk"], "minMacOS": "15.0" }

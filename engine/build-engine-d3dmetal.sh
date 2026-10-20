@@ -76,6 +76,7 @@ if [ "${RESUME:-0}" != 1 ] || [ ! -f "$WORK/build/Makefile" ]; then
       GNUTLS_CFLAGS="-I$DEPS/include" GNUTLS_LIBS="-L$DEPS/lib -lgnutls" \
       SDL2_CFLAGS="-I$DEPS/include/SDL2 -D_THREAD_SAFE" SDL2_LIBS="-L$DEPS/lib -lSDL2" \
       LDFLAGS="-L$DEPS/lib -Wl,-rpath,@loader_path/../../" \
+      ac_cv_func_pipe2=no \
       ../sources/wine/configure --build=x86_64-apple-darwin --host=x86_64-apple-darwin --prefix="$WORK/stage" \
         --enable-archs=i386,x86_64 --disable-tests --disable-win16 \
         --with-mingw --with-freetype --with-gnutls --with-sdl --with-vulkan --with-coreaudio --with-opencl --with-unwind \
@@ -91,6 +92,19 @@ rm -rf "$WORK/stage"
 ( cd "$WORK/build" && "${CLEAN_ENV[@]}" make -j"$(sysctl -n hw.ncpu)" > make.out 2>&1 \
   && "${CLEAN_ENV[@]}" make install > install.out 2>&1 ) \
   || { echo "Wine build failed; see $WORK/build/make.out and install.out" >&2; exit 1; }
+
+# The SDK can be newer than the oldest macOS the engine supports (MACOSX_DEPLOYMENT_TARGET). Functions only
+# a newer macOS has are weak imports, NULL on older systems: configure saw pipe2 in the macOS 27 SDK and
+# engine 2.0.1 crashed at start on every macOS 26 Mac (ntdll server_pipe -> pipe2 -> address 0). Hence
+# ac_cv_func_pipe2=no above (Wine falls back to pipe + fcntl), and this check: weak imports in Wine's modules
+# must be ones its source guards with an availability check.
+GUARDED_WEAK='^(ulock_wait2|availability_version_check|os_sync_wait_on_address|os_sync_wait_on_address_with_timeout|os_sync_wake_by_address_any|clCreateImage2D|clCreateImage3D|clEnqueueBarrier|clEnqueueMarker|clEnqueueWaitForEvents|clUnloadCompiler)$'
+for bin in "$WORK"/stage/bin/wine "$WORK"/stage/bin/wineserver "$WORK"/stage/lib/wine/x86_64-unix/*.so; do
+  [ -L "$bin" ] && continue
+  unguarded="$(dyld_info -imports "$bin" 2>/dev/null | grep weak-import | grep -oE '_[A-Za-z0-9_]+' | sed 's/^_*//' \
+    | grep -vE "$GUARDED_WEAK" || true)"
+  [ -z "$unguarded" ] || { echo "$(basename "$bin") weak-imports $unguarded: check it is guarded, or pin it off in configure" >&2; exit 1; }
+done
 
 # --- 3. Assemble the engine ----------------------------------------------------------------------------
 ENG="$WORK/engine"; rm -rf "$ENG" && mkdir -p "$ENG"
