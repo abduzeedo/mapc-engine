@@ -49,6 +49,30 @@ import Testing
         #expect(d.launch?.bySignal == true)
     }
 
+    @Test func crashOnReplacedEnginePointsToTheUpdate() {
+        // The MaPC 1.1.5 report on macOS 26.7.1: Steam's environment on 2.0.1, every launch killed by signal 11 at once.
+        let log = """
+        [MaPC] Launch 2026-10-20T18:02:11Z engine=2.0.1 wine=11.0 (CrossOver 26.3.0) environment=steam backend=d3dMetal
+        [MaPC] Exit 2026-10-20T18:02:12Z pid=4410 status=11 reason=signal
+        """
+        let entry = EngineManifest.Entry(version: "2.0.2", url: URL(string: "https://x/c")!, sha256: "cc", size: 1,
+                                         minAppVersion: "1.0.1", backends: ["d3dMetal", "dxmt"])
+        let d = LogDiagnosis(log: log, engineUpdates: [.init(installed: "2.0.1", replacement: entry)])
+        #expect(ids(d) == ["engine-superseded"])
+        #expect(d.findings[0].action == .updateEngine(from: "2.0.1", to: "2.0.2"))
+        #expect(d.findings[0].detail.contains("2.0.2"))
+        // Without a known replacement it stays the generic engine crash.
+        #expect(ids(LogDiagnosis(log: log)) == ["engine-crash"])
+        // A replacement for another engine doesn't apply.
+        #expect(ids(LogDiagnosis(log: log, engineUpdates: [.init(installed: "1.0.0", replacement: entry)])) == ["engine-crash"])
+        // A replaced engine that ran for a while and quit normally isn't blamed.
+        let fine = """
+        [MaPC] Launch 2026-10-20T18:02:11Z engine=2.0.1 wine=11.0 (CrossOver 26.3.0) environment=steam backend=d3dMetal
+        [MaPC] Exit 2026-10-20T18:40:12Z pid=4410 status=0 reason=exit
+        """
+        #expect(LogDiagnosis(log: fine, engineUpdates: [.init(installed: "2.0.1", replacement: entry)]).findings.isEmpty)
+    }
+
     @Test func wineD3DFeatureLevel() {
         let log = "009c:err:d3d:wined3d_select_feature_level None of the requested D3D feature levels is supported on this GPU with the current shader backend."
         #expect(LogDiagnosis(log: log).findings.first?.action == .useBackend(.dxvk))

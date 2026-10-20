@@ -142,6 +142,79 @@ private final class PhaseLog: @unchecked Sendable {
         #expect(m.usable(byApp: "1.1.3").latest(supporting: .d3dMetal)?.version == "2.0.2")
     }
 
+    /// The live list after 2.0.1 was dropped (2.0.1 crashes at start on macOS 26), plus test-only entries.
+    private func liveList(_ extra: String = "") throws -> EngineManifest {
+        try EngineManifest.decode(Data(#"""
+        {"engines":[{"version":"1.0.1","url":"https://x/a","sha256":"aa","size":1,"minAppVersion":"0.1","backends":["dxvk"]},
+                    {"version":"2.0.2","url":"https://x/c","sha256":"cc","size":1,"minAppVersion":"1.0.1","backends":["d3dMetal","dxmt"]}\#(extra)]}
+        """#.utf8))
+    }
+    private func info(_ version: String, _ backends: [String]) -> EngineInfo {
+        EngineInfo(version: version, wineVersion: "11.0", backends: backends, minMacOS: "14.0")
+    }
+
+    @Test func droppedEngineIsReplacedByTheNewerOneWithTheSameBackends() throws {
+        let updates = try liveList().updates(for: [info("2.0.1", ["d3dMetal", "dxmt"]), info("1.0.1", ["dxvk"])],
+                                             appVersion: "1.1.5", macOS: "26.7.1")
+        #expect(updates.map(\.installed) == ["2.0.1"])
+        #expect(updates.first?.replacement.version == "2.0.2")
+        // An older 2.x without DXMT is replaced too: 2.0.2 provides everything it did.
+        #expect(try liveList().updates(for: [info("2.0.0", ["d3dMetal"])], appVersion: "1.1.5", macOS: "26.0")
+            .first?.replacement.version == "2.0.2")
+        // A dropped base engine goes to the newer base engine, not to 2.0.2, which has no DXVK.
+        #expect(try liveList().updates(for: [info("1.0.0", ["dxvk"])], appVersion: "1.1.5", macOS: "26.0")
+            .first?.replacement.version == "1.0.1")
+    }
+
+    @Test func listedNewerOrIrreplaceableEnginesAreLeftAlone() throws {
+        let list = try liveList()
+        // Still listed.
+        #expect(list.updates(for: [info("2.0.2", ["d3dMetal", "dxmt"])], appVersion: "1.1.5", macOS: "26.7.1").isEmpty)
+        // Newer than anything listed (a private test build).
+        #expect(list.updates(for: [info("2.0.4-test", ["d3dMetal", "dxmt"])], appVersion: "1.1.5", macOS: "26.7.1").isEmpty)
+        // Nothing listed provides its backend.
+        #expect(list.updates(for: [info("0.9.0", ["vkd3d"])], appVersion: "1.1.5", macOS: "26.7.1").isEmpty)
+        // Nothing installed.
+        #expect(list.updates(for: [], appVersion: "1.1.5", macOS: "26.7.1").isEmpty)
+    }
+
+    @Test func replacementMustFitThisAppAndMacOS() throws {
+        let newer = #",{"version":"2.0.3","url":"https://x/d","sha256":"dd","size":1,"minAppVersion":"1.2.0","minMacOS":"27.0","backends":["d3dMetal","dxmt"]}"#
+        let old = [info("2.0.1", ["d3dMetal", "dxmt"])]
+        // 2.0.3 needs app 1.2.0 and macOS 27, so 1.1.5 on macOS 26 gets 2.0.2.
+        #expect(try liveList(newer).updates(for: old, appVersion: "1.1.5", macOS: "26.7.1").first?.replacement.version == "2.0.2")
+        #expect(try liveList(newer).updates(for: old, appVersion: "1.2.0", macOS: "26.7.1").first?.replacement.version == "2.0.2")
+        #expect(try liveList(newer).updates(for: old, appVersion: "1.2.0", macOS: "27.0").first?.replacement.version == "2.0.3")
+        // An app too old for every replacement is offered none (1.0.0 can't use 2.0.2).
+        #expect(try liveList().updates(for: old, appVersion: "1.0.0", macOS: "26.7.1").isEmpty)
+        // An engine listed only for newer apps is still listed, so it isn't "dropped".
+        #expect(try liveList(newer).updates(for: [info("2.0.3", ["d3dMetal", "dxmt"])], appVersion: "1.1.5", macOS: "26.7.1").isEmpty)
+    }
+
+    @Test func replacedEngineEnvironmentsMoveToTheReplacement() {
+        var s = AppSettings()
+        s.activeEngineVersion = "1.0.1"
+        s.bottleEngines = ["steam": "2.0.1", "epic": "1.0.1", "gog": "2.0.1"]
+        s.moveEnvironments(fromEngine: "2.0.1", to: "2.0.2")
+        #expect(s.bottleEngines == ["steam": "2.0.2", "epic": "1.0.1", "gog": "2.0.2"])
+        #expect(s.activeEngineVersion == "1.0.1")
+        s.activeEngineVersion = "2.0.1"
+        s.moveEnvironments(fromEngine: "2.0.1", to: "2.0.2")
+        #expect(s.activeEngineVersion == "2.0.2")
+        var fresh = AppSettings()   // settings from before environments were recorded
+        fresh.moveEnvironments(fromEngine: "2.0.1", to: "2.0.2")
+        #expect(fresh.bottleEngines == nil && fresh.activeEngineVersion == nil)
+    }
+
+    @Test func entryFitsComparesVersionsNumerically() {
+        let e = EngineManifest.Entry(version: "2.0.2", url: URL(string: "https://x")!, sha256: "", size: 0,
+                                     minAppVersion: "1.1.10", backends: nil, minMacOS: "26.10")
+        #expect(e.fits(appVersion: "1.1.10", macOS: "26.10.1"))
+        #expect(!e.fits(appVersion: "1.1.9", macOS: "26.10"))
+        #expect(!e.fits(appVersion: "1.2", macOS: "26.9"))
+        #expect(EngineManifest.macOSVersion.split(separator: ".").count == 3)
+    }
+
     @Test func settingsWrittenBeforeBottleEnginesStillLoad() throws {
         let home = FileManager.default.temporaryDirectory.appendingPathComponent("macade-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: home) }

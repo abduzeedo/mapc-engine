@@ -9,6 +9,8 @@ public struct LogDiagnosis: Equatable, Sendable {
         case useBackend(GraphicsBackend)
         case installExtendedEngine
         case setUpDirectX12
+        /// Replace engine `from`, which the engine list dropped, with `to` (see `EngineManifest.updates`).
+        case updateEngine(from: String, to: String)
         case reportProblem
         case none
     }
@@ -58,7 +60,10 @@ public struct LogDiagnosis: Equatable, Sendable {
         return String(decoding: head, as: UTF8.self) + "\n" + String(decoding: tail, as: UTF8.self)
     }
 
-    public init(log: String, probe: GraphicsProbe? = nil, dxmtAvailable: Bool = false, d3dMetalAvailable: Bool = false) {
+    /// `engineUpdates`: installed engines the engine list replaced (`EngineManifest.updates`), so a crash at start on
+    /// one of them points to its replacement instead of a report.
+    public init(log: String, probe: GraphicsProbe? = nil, dxmtAvailable: Bool = false, d3dMetalAvailable: Bool = false,
+                engineUpdates: [EngineManifest.Update] = []) {
         let lines = log.split(whereSeparator: \.isNewline).map(String.init)
         let launch = Self.lastLaunch(in: lines)
         self.launch = launch
@@ -123,7 +128,14 @@ public struct LogDiagnosis: Equatable, Sendable {
             add("not-found", "The game's program couldn't be started",
                 "Windows couldn't find or open the program. The game may not be fully installed; verify or reinstall it.", .reportProblem, e)
         }
-        if let launch, launch.bySignal, let seconds = launch.seconds, seconds < 5 {
+        if let launch, launch.bySignal, let seconds = launch.seconds, seconds < 5,
+           let update = engineUpdates.first(where: { $0.installed == launch.engine }) {
+            // Engine 2.0.1 on macOS 26: ntdll calls pipe2, which macOS 26 doesn't have, and every launch dies at once.
+            add("engine-superseded", "Engine \(update.installed) has been replaced",
+                "The engine stopped within seconds, before the game ran. MaPC no longer offers engine \(update.installed): \(update.replacement.version) replaces it and fixes problems like this one. Update the engine; your games and their environments stay as they are.",
+                .updateEngine(from: update.installed, to: update.replacement.version),
+                "[MaPC] Exit status=\(launch.status ?? 0) after \(Int(seconds)) s on engine \(update.installed)")
+        } else if let launch, launch.bySignal, let seconds = launch.seconds, seconds < 5 {
             add("engine-crash", "The engine crashed while starting",
                 "The engine itself stopped within seconds, before the game ran. This is an engine problem, not the game's: switch engines in Settings › Engine and send a report.",
                 .reportProblem, "[MaPC] Exit status=\(launch.status ?? 0) after \(Int(seconds)) s")
