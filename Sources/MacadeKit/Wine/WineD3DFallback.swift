@@ -57,8 +57,8 @@ public struct WineD3DFallback: Sendable {
         return copy
     }
 
-    /// Installs the fallback when `engine` runs D3DMetal and has Wine's originals; removes it otherwise
-    /// (a DXVK engine needs System32 free for its own DLLs). Call before starting anything in the bottle.
+    /// Installs the fallback when `engine` runs D3DMetal and has Wine's originals; otherwise removes it and puts
+    /// `engine`'s own DLLs back (a DXVK engine needs System32 free for its own DLLs). Call before starting anything in the bottle.
     public func update(_ kind: BottleKind, engine: Engine) async {
         let bottle = Bottle(kind: kind, paths: paths)
         guard bottle.exists else { return }
@@ -83,12 +83,46 @@ public struct WineD3DFallback: Sendable {
             guard changed || (try? String(contentsOf: markerFile, encoding: .utf8)) != markerValue else { return }
             await setOverrides(true, engine: engine, bottle: bottle)
             try? markerValue.write(to: markerFile, atomically: true, encoding: .utf8)
-        } else if fm.fileExists(atPath: markerFile.path) {
-            // Wine's next prefix update puts the engine's own copies back.
-            for module in Self.modules { try? fm.removeItem(at: system32.appendingPathComponent("\(module).dll")) }
+        } else {
+            let installed = fm.fileExists(atPath: markerFile.path)
+            Self.restoreBuiltins(in: system32, engine: engine, replacingFallback: installed)
+            guard installed else { return }
             await setOverrides(false, engine: engine, bottle: bottle)
             try? fm.removeItem(at: markerFile)
         }
+    }
+
+    /// Puts `engine`'s own builtin copies where the fallback's native copies are (when `replacingFallback`) and
+    /// where they are missing. Waiting for Wine's prefix update isn't enough: by the time this runs, the new engine
+    /// has usually updated the prefix already, so nothing puts them back, and Steam's helper then fails to load
+    /// `dxgi.dll`. Earlier versions removed them that way, hence missing files are restored on every call.
+    /// Files someone else changed, and copies `NativeBackendDLLs` put there, are left alone.
+    static func restoreBuiltins(in system32: URL, engine: Engine, replacingFallback: Bool) {
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: system32.path) else { return }
+        let windows = engine.wineRoot.appendingPathComponent("lib/wine/x86_64-windows")
+        let nativeBackend = (try? JSONDecoder().decode([String: String].self, from:
+            Data(contentsOf: system32.appendingPathComponent(NativeBackendDLLs.record)))) ?? [:]
+        for module in modules {
+            let target = system32.appendingPathComponent("\(module).dll")
+            if let current = fm.contents(atPath: target.path) {
+                guard replacingFallback, isFallbackCopy(current),
+                      nativeBackend[module] != NativeBackendDLLs.sha256(current) else { continue }
+            }
+            if let builtin = fm.contents(atPath: windows.appendingPathComponent("\(module).dll").path) {
+                try? builtin.write(to: target, options: .atomic)
+            } else if fm.fileExists(atPath: target.path) {
+                try? fm.removeItem(at: target)
+            }
+        }
+    }
+
+    /// What `update` installs: a Wine build with its builtin marker cleared.
+    static func isFallbackCopy(_ dll: Data) -> Bool {
+        guard dll.count > 0x50, dll[dll.startIndex + 0x40..<dll.startIndex + 0x50].allSatisfy({ $0 == 0 }) else { return false }
+        var marked = dll
+        marked.replaceSubrange(marked.startIndex + 0x40..<marked.startIndex + 0x50, with: Data("Wine builtin DLL".utf8))
+        return isWineBuild(Data(marked))
     }
 
     private func setOverrides(_ on: Bool, engine: Engine, bottle: Bottle) async {
