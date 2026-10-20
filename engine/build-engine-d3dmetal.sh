@@ -65,6 +65,15 @@ ln -s "$BREW/opt/sdl2/include/SDL2" "$DEPS/include/SDL2"
 
 # --- 2. Wine from CrossOver's source -------------------------------------------------------------------
 # RESUME=1 continues an earlier build tree (after fixing a failure) instead of starting from scratch.
+# Game videos: Wine's Media Foundation decodes with GStreamer (winegstreamer). MaPC doesn't ship GStreamer; users
+# install the official GStreamer.framework themselves (gstreamer.freedesktop.org, universal) and winegstreamer.so
+# finds it through this rpath, like Gcenx's engine 1.x. Building needs the GStreamer "devel" package on this Mac.
+GST_FW=/Library/Frameworks/GStreamer.framework
+GST_PC="$GST_FW/Versions/1.0/bin/pkg-config"
+GST_MODULES="gstreamer-1.0 gstreamer-base-1.0 gstreamer-video-1.0 gstreamer-audio-1.0 gstreamer-tag-1.0"
+[ -x "$GST_PC" ] && "$GST_PC" --exists $GST_MODULES \
+  || { echo "GStreamer devel isn't installed ($GST_FW); install gstreamer-1.0-devel-*-universal.pkg" >&2; exit 1; }
+GST_CFLAGS="$("$GST_PC" --cflags $GST_MODULES)"; GST_LIBS="$("$GST_PC" --libs $GST_MODULES)"
 CLEAN_ENV=(/usr/bin/env -i HOME="$HOME" PATH="$BREW/opt/bison/bin:$BREW/bin:/usr/bin:/bin:/usr/sbin:/sbin" MACOSX_DEPLOYMENT_TARGET=14.0)
 if [ "${RESUME:-0}" != 1 ] || [ ! -f "$WORK/build/Makefile" ]; then
   rm -rf "$WORK/sources/wine" "$WORK/build"
@@ -75,14 +84,15 @@ if [ "${RESUME:-0}" != 1 ] || [ ! -f "$WORK/build/Makefile" ]; then
       FREETYPE_CFLAGS="-I$DEPS/include/freetype2" FREETYPE_LIBS="-L$DEPS/lib -lfreetype" \
       GNUTLS_CFLAGS="-I$DEPS/include" GNUTLS_LIBS="-L$DEPS/lib -lgnutls" \
       SDL2_CFLAGS="-I$DEPS/include/SDL2 -D_THREAD_SAFE" SDL2_LIBS="-L$DEPS/lib -lSDL2" \
-      LDFLAGS="-L$DEPS/lib -Wl,-rpath,@loader_path/../../" \
+      GSTREAMER_CFLAGS="$GST_CFLAGS" GSTREAMER_LIBS="$GST_LIBS" \
+      LDFLAGS="-L$DEPS/lib -Wl,-rpath,@loader_path/../../ -Wl,-rpath,$GST_FW/Libraries" \
       ac_cv_func_pipe2=no \
       ../sources/wine/configure --build=x86_64-apple-darwin --host=x86_64-apple-darwin --prefix="$WORK/stage" \
         --enable-archs=i386,x86_64 --disable-tests --disable-win16 \
         --with-mingw --with-freetype --with-gnutls --with-sdl --with-vulkan --with-coreaudio --with-opencl --with-unwind \
         --without-x --without-wayland --without-alsa --without-oss --without-udev --without-v4l2 --without-capi \
         --without-inotify --without-pulse --without-dbus --without-netapi --without-krb5 --without-gssapi \
-        --without-fontconfig --without-sane --without-gphoto --without-gstreamer --without-ffmpeg --without-usb \
+        --without-fontconfig --without-sane --without-gphoto --with-gstreamer --without-ffmpeg --without-usb \
         > configure.out 2>&1 ) || { echo "configure failed; see $WORK/build/configure.out" >&2; exit 1; }
 fi
 # Build-time tools (sfnt2fon links FreeType) get the same `@loader_path/../../` rpath as Wine's modules;
@@ -105,6 +115,9 @@ for bin in "$WORK"/stage/bin/wine "$WORK"/stage/bin/wineserver "$WORK"/stage/lib
     | grep -vE "$GUARDED_WEAK" || true)"
   [ -z "$unguarded" ] || { echo "$(basename "$bin") weak-imports $unguarded: check it is guarded, or pin it off in configure" >&2; exit 1; }
 done
+
+otool -L "$WORK/stage/lib/wine/x86_64-unix/winegstreamer.so" 2>/dev/null | grep -q 'libgstreamer-1.0' \
+  || { echo "winegstreamer.so wasn't built against GStreamer; game videos wouldn't play" >&2; exit 1; }
 
 # --- 3. Assemble the engine ----------------------------------------------------------------------------
 ENG="$WORK/engine"; rm -rf "$ENG" && mkdir -p "$ENG"

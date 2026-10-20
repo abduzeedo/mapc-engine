@@ -8,6 +8,10 @@ wrapper (`steamwebhelper-wrapper.exe`), which is © Steale LLC and open source u
 **No Apple software is included in any MaPC engine.** DirectX 12 support uses Apple's D3DMetal, which MaPC copies
 from the user's own download of Apple's Game Porting Toolkit; the user's use of it is governed by Apple's license.
 
+**Game videos.** Wine plays them with GStreamer (`winegstreamer`). No MaPC engine includes GStreamer or any video
+codec: users who want game videos install the official GStreamer runtime from gstreamer.freedesktop.org themselves,
+and the engines load it from `/Library/Frameworks/GStreamer.framework`.
+
 ## Source code
 
 - **Wine in engine 2.x** is built by us, unmodified, from CodeWeavers' CrossOver 26.3.0 source
