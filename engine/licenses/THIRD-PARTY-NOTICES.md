@@ -17,11 +17,6 @@ from the user's own download of Apple's Game Porting Toolkit; the user's use of 
   below) are Gcenx's macOS builds, version 11.18: https://github.com/Gcenx/macOS_Wine_builds/releases/tag/11.18
   (libraries built with MacPorts; their sources are MacPorts' distfiles for those versions).
 - **DXVK** in engine 1.x: https://github.com/Gcenx/DXVK-macOS/releases/tag/v1.10.3-20230507-repack
-- **FFmpeg 7.1.5** in both engines (`libavutil`, `libavformat`, `libavcodec`, for Wine's video playback) is built by us
-  from https://ffmpeg.org/releases/ffmpeg-7.1.5.tar.xz (sha256 de668509…d558f), LGPL-2.1-or-later only (no GPL,
-  non-free or version-3 parts), with only the decoders listed in `build/ffmpeg-decoders.txt` (formats cleared for
-  patents by Fedora's legal review; no H.264, HEVC, VC-1/WMV9 or WMA Pro). The exact tarball and `build/build-ffmpeg.sh`
-  are published with the engine.
 - **DXMT** in engine 2.x: v0.80, the unmodified release build from https://github.com/3Shain/dxmt/releases/tag/v0.80
   (source: https://github.com/3Shain/dxmt/tree/v0.80). Its `winemetal.so` contains LLVM 15, its shader converter
   contains Microsoft's DXBC parser, and parts of it are derived from DXVK.
@@ -38,7 +33,6 @@ providing it: email support@mapc.games.
 | Wine Staging 11.18 | 1.x | LGPL-2.1-or-later | Wine-COPYING.LIB.txt, Wine-LICENSE.txt |
 | DXVK (macOS, async) 1.10.3 | 1.x | zlib | DXVK-LICENSE.txt |
 | winpthreads (mingw-w64 11.0.1, linked into DXVK's DLLs) | 1.x | MIT-style and BSD-style | winpthreads-COPYING.txt |
-| FFmpeg 7.1.5 (libavutil, libavformat, libavcodec) | both | LGPL-2.1-or-later | LGPL-2.1.txt, FFmpeg-LICENSE.md.txt |
 | DXMT 0.80 | 2.x | MIT | DXMT-LICENSE.txt |
 | LLVM 15 (inside DXMT's `winemetal.so`) | 2.x | Apache-2.0 WITH LLVM-exception | LLVM-LICENSE.txt |
 | DXBC parser (Microsoft, inside DXMT) | 2.x | MIT | DXBCParser-LICENSE.txt |
