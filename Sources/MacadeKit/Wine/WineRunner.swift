@@ -174,16 +174,3 @@ public struct WineRunner: Sendable {
         return r?.succeeded == true
     }
 }
-
-public extension WineRunner {
-    /// Writes Wine's Mac driver options (bottle-wide registry values, e.g. `RetinaMode`,
-    /// `LeftCommandIsCtrl`). They take effect the next time Wine starts.
-    func applyMacDriver(_ values: [String: Bool], engine: Engine, bottle: Bottle) async {
-        let env = Self.environment(bottle: bottle, profile: LaunchProfile())
-        for (name, enabled) in values.sorted(by: { $0.key < $1.key }) {
-            _ = try? await ProcessRunner.run(
-                engine.wine, ["reg", "add", #"HKCU\Software\Wine\Mac Driver"#, "/v", name, "/d", enabled ? "y" : "n", "/f"],
-                environment: env)
-        }
-    }
-}
