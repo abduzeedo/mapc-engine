@@ -7,7 +7,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var gamesFolder: URL?
     public var verboseLogs = false
     public var engineManifestURL: URL?
-    /// Retina mode last written into each bottle's registry (so it's only rewritten when it changes).
+    /// Retina mode last written into each bottle's registry. No longer used: launches read the registry itself
+    /// (`WineRunner.syncMacDriver`). Kept so settings files stay readable by older versions.
     public var appliedRetina: [String: Bool] = [:]
     /// Engine version that last started each bottle. A bottle's wineserver belongs to one engine,
     /// so another engine can only use the bottle after it stops. Optional: older files don't have it.
@@ -18,7 +19,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var hiddenStores: [String]?
     /// Stores turned on that start off (GOG, Ubisoft, EA), as `StoreKind` raw values.
     public var shownStores: [String]?
-    /// Mac driver options last written into each bottle's registry, by bottle then value name.
+    /// Mac driver options last written into each bottle's registry, by bottle then value name. No longer used,
+    /// like `appliedRetina`.
     public var appliedMacDriver: [String: [String: Bool]]?
     /// PlayStation-style pads (DualShock 4, DualSense, Backbone One PlayStation Edition) appear to games as Xbox
     /// controllers. `nil` means the default, which is on.
