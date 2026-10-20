@@ -80,6 +80,10 @@ public struct WineRunner: Sendable {
             if profile.metalFX { env["D3DM_ENABLE_METALFX"] = "1" }
         }
         if profile.performanceHUD { env["MTL_HUD_ENABLED"] = "1" }
+        // Wine's DPAPI keys on GetUserName, which CrossOver hard-codes to "crossover" (Hack 12735) while other
+        // engines report the Mac user. Without this, data one engine encrypts (Steam's saved login) can't be read
+        // after an engine switch. Only CrossOver-based engines read it.
+        env["CX_REPORT_REAL_USERNAME"] = "1"
         for (k, v) in profile.extraEnvironment { env[k] = v }   // user settings win
         return env
     }

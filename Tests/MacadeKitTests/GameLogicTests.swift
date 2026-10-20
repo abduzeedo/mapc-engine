@@ -20,7 +20,16 @@ private func fixtureData(_ name: String) throws -> Data {
             "WINEDEBUG": "-all", "WINEESYNC": "1", "WINEMSYNC": "1", "ROSETTA_ADVERTISE_AVX": "1",
             "WINEDLLOVERRIDES": "mscoree,mshtml=;winemenubuilder.exe=d;d3d11,d3d10core=n,b",
             "DXVK_ASYNC": "1", "MVK_CONFIG_RESUME_LOST_DEVICE": "1",
+            "CX_REPORT_REAL_USERNAME": "1",
         ])
+    }
+
+    @Test func realUserNameOnEveryBackend() {
+        for backend in GraphicsBackend.allCases {
+            var p = LaunchProfile()
+            p.backend = backend
+            #expect(WineRunner.environment(bottle: bottle, profile: p, base: [:])["CX_REPORT_REAL_USERNAME"] == "1")
+        }
     }
 
     @Test func hostEnvironmentDoesNotLeak() {
