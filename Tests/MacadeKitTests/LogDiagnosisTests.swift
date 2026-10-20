@@ -22,6 +22,19 @@ import Testing
         #expect(d.launch?.seconds == 21)
     }
 
+    @Test func direct3D9SharedVideoSurface() {
+        // The Lion's Song on DXMT with GStreamer installed: the video decodes, then the shared surface can't be opened.
+        let log = """
+        [MaPC] Launch 2026-10-19T19:26:13Z engine=2.0.4-test wine=11.0 (CrossOver 26.3.0) environment=steam backend=dxmt
+        info:  Using feature level D3D_FEATURE_LEVEL_10_0
+        warn:  ImportSharedTexture: Invalid shared handle type
+        0940:0944:err:seh:NtRaiseException Unhandled exception code c0000005 flags 0 addr 0x656410
+        """
+        let d = LogDiagnosis(log: log)
+        #expect(ids(d) == ["d3d9-shared-video"])
+        #expect(d.findings[0].action == LogDiagnosis.Action.none)
+    }
+
     @Test func engineCrashingAtStart() {
         // Engine 2.0.1 on macOS 26: every launch, including Steam itself.
         let log = """

@@ -92,6 +92,13 @@ public struct LogDiagnosis: Equatable, Sendable {
                 "The game's graphics crashed under Vulkan. Another Graphics option may work better.",
                 launch?.backend == GraphicsBackend.dxvk.rawValue && dxmtAvailable ? .useBackend(.dxmt) : .reportProblem, e)
         }
+        if let e = line("ImportSharedTexture: Invalid shared handle type") {
+            // Seen with The Lion's Song: its video player decodes into a shared Direct3D 9 surface and opens it in
+            // Direct3D 11. Wine's Direct3D 9 doesn't share surfaces yet, so the handle is empty and the game crashes.
+            add("d3d9-shared-video", "The game's videos can't be shown yet",
+                "The game hands its video frames from DirectX 9 to DirectX 11, which Wine doesn't support yet. It closes when a video starts; there's no setting that fixes this.",
+                .none, e)
+        }
         if !found.contains(where: { $0.id == "vulkan-32bit" || $0.id == "wined3d-level" }),
            let e = line("Failed to initialize graphics") ?? line("Failed to create D3D11 device") ?? line("D3D11CoreCreateDevice: Failed") {
             add("no-device", "The game couldn't start its graphics",
