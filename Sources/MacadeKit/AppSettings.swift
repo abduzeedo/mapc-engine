@@ -44,6 +44,14 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var restartSteamForGraphics: Bool?
 
     public init() {}
+
+    /// Points the environments and the active engine that use engine `old` at `new` (after `new` replaced it, see
+    /// `EngineManifest.updates`). Only while those environments are idle: a running one's wineserver belongs to
+    /// the engine that started it. Environments on other engines stay where they are.
+    public mutating func moveEnvironments(fromEngine old: String, to new: String) {
+        bottleEngines = bottleEngines?.mapValues { $0 == old ? new : $0 }
+        if activeEngineVersion == old { activeEngineVersion = new }
+    }
 }
 
 /// Atomic JSON persistence for settings and the library cache.
