@@ -8,6 +8,10 @@ wrapper (`steamwebhelper-wrapper.exe`), which is © Steale LLC and open source u
 **No Apple software is included in any MaPC engine.** DirectX 12 support uses Apple's D3DMetal, which MaPC copies
 from the user's own download of Apple's Game Porting Toolkit; the user's use of it is governed by Apple's license.
 
+**Game videos.** Wine plays them with GStreamer (`winegstreamer`). No MaPC engine includes GStreamer or any video
+codec: users who want game videos install the official GStreamer runtime from gstreamer.freedesktop.org themselves,
+and the engines load it from `/Library/Frameworks/GStreamer.framework`.
+
 ## Source code
 
 - **Wine in engine 2.x** is built by us, unmodified, from CodeWeavers' CrossOver 26.3.0 source
@@ -15,8 +19,16 @@ from the user's own download of Apple's Game Porting Toolkit; the user's use of 
   GitHub release (https://github.com/abduzeedo/mapc-site/releases).
 - **Wine Staging in engine 1.x** and the **runtime libraries** in both engines (everything under "Runtime libraries"
   below) are Gcenx's macOS builds, version 11.18: https://github.com/Gcenx/macOS_Wine_builds/releases/tag/11.18
-  (libraries built with MacPorts; their sources are MacPorts' distfiles for those versions).
+  (libraries built with MacPorts; their sources are MacPorts' distfiles for those versions). Published next to each
+  1.x engine on its GitHub release: Wine 11.18's source, the Wine Staging v11.18 patches, the one upstream patch
+  Gcenx applies (Wine merge request 11538), and Gcenx's build recipe at the 11.18 tag.
+- **Wine Mono 11.3.0** in engine 1.x (`share/wine/mono`, Wine's .NET runtime) is the unmodified build bundled in
+  Gcenx's package. Its source, `wine-mono-11.3.0-src.tar.xz` from WineHQ, is published next to each 1.x engine.
+  Engine 1.x doesn't include Wine Gecko.
 - **DXVK** in engine 1.x: https://github.com/Gcenx/DXVK-macOS/releases/tag/v1.10.3-20230507-repack
+- **DXMT** in engine 2.x: v0.80, the unmodified release build from https://github.com/3Shain/dxmt/releases/tag/v0.80
+  (source: https://github.com/3Shain/dxmt/tree/v0.80). Its `winemetal.so` contains LLVM 15, its shader converter
+  contains Microsoft's DXBC parser, and parts of it are derived from DXVK.
 
 **Written offer.** For at least three years after we last distribute an engine, anyone who received it can ask us
 for the complete corresponding source code of any LGPL or GPL component in it, for no more than the cost of
@@ -29,10 +41,45 @@ providing it: email support@mapc.games.
 | Wine (CodeWeavers CrossOver 26.3.0 source) | 2.x | LGPL-2.1-or-later | Wine-COPYING.LIB.txt, Wine-LICENSE.txt |
 | Wine Staging 11.18 | 1.x | LGPL-2.1-or-later | Wine-COPYING.LIB.txt, Wine-LICENSE.txt |
 | DXVK (macOS, async) 1.10.3 | 1.x | zlib | DXVK-LICENSE.txt |
+| Wine Mono 11.3.0 (Mono, FNA, WinForms, WPF and more) | 1.x | MIT, LGPL-2.0/2.1, GPL-2.0 with exception (SharpZipLib), MS-PL (FNA), zlib | wine-mono/ |
+| winpthreads (mingw-w64 11.0.1, linked into DXVK's DLLs) | 1.x | MIT-style and BSD-style | winpthreads-COPYING.txt |
+| DXMT 0.80 | 2.x | MIT | DXMT-LICENSE.txt |
+| LLVM 15 (inside DXMT's `winemetal.so`) | 2.x | Apache-2.0 WITH LLVM-exception | LLVM-LICENSE.txt |
+| DXBC parser (Microsoft, inside DXMT) | 2.x | MIT | DXBCParser-LICENSE.txt |
+| DXVK-derived code in DXMT | 2.x | zlib | DXVK-LICENSE.txt |
 | MoltenVK | both | Apache-2.0 | MoltenVK-LICENSE.txt |
 | Vulkan Loader | both | Apache-2.0 | Vulkan-Loader-LICENSE.txt |
 | SDL2 | both | zlib | SDL2-LICENSE.txt |
 | FreeType | both | FreeType License (FTL) | freetype-LICENSE.txt |
+
+### Libraries inside Wine's own DLLs (both engines)
+
+Wine builds these from its own source tree (`libs/`) into its DLLs. Their license texts are in `wine-libs/`
+(for engine 2.x copied from the CrossOver source it is built from; for engine 1.x from Wine 11.18). Their source
+is part of Wine's source, under **Source code** above.
+
+| Library | License |
+|---|---|
+| FAudio | zlib |
+| FFmpeg (engine 1.x) | LGPL-2.1-or-later |
+| FluidSynth | LGPL-2.1-or-later |
+| GSM 06.10 | GSM license (notice required) |
+| libjpeg (Independent JPEG Group) | IJG license |
+| jxrlib (JPEG XR) | BSD-2-Clause |
+| Little CMS (lcms2) | MIT |
+| OpenLDAP (client) | OpenLDAP Public License 2.8 |
+| mpg123 | LGPL-2.1 |
+| musl (math functions) | MIT |
+| libpng | libpng License |
+| libtiff | libtiff license |
+| vkd3d | LGPL-2.1-or-later |
+| libxml2, libxslt | MIT |
+| zlib | zlib |
+| Capstone | BSD-3-Clause (and LLVM's license) |
+| compiler-rt, libc++, libc++abi, libunwind | Apache-2.0 WITH LLVM-exception |
+| ICU | Unicode License v3 |
+| SymCrypt (engine 1.x) | MIT |
+| LibTomCrypt (where present) | public domain / Unlicense |
 
 ### Runtime libraries (both engines)
 

@@ -16,6 +16,16 @@ public struct EngineManifest: Codable, Equatable, Sendable {
     public var steamArgs: [String]?
     public var knownIssues: [String: String]?
 
+    /// Only the entries an app at `appVersion` can use: no minimum, or one it meets. Apps before 1.1.4 ignored
+    /// `minAppVersion`, so engines that need a newer app go in a separate list those apps never read.
+    public func usable(byApp appVersion: String) -> EngineManifest {
+        var usable = self
+        usable.engines = engines.filter { entry in
+            entry.minAppVersion.map { appVersion.compare($0, options: .numeric) != .orderedAscending } ?? true
+        }
+        return usable
+    }
+
     /// Newest entry (numeric version order).
     public var latest: Entry? { newest(engines) }
 

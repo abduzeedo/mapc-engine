@@ -7,10 +7,14 @@ public struct GraphicsProbe: Codable, Sendable, Equatable {
     /// so this also counts DX12-only helper libraries and the `D3D12CreateDevice` entry point.
     public var usesDirectX12 = false
     public var has64BitExecutable = false
+    /// Only 32-bit game binaries, and they use Direct3D 10 or 11. Engine 1.x can't create a device for these:
+    /// 32-bit Vulkan doesn't work under Wine's WoW64 on MoltenVK, and Wine's OpenGL renderer stops below 10_0.
+    public var uses32BitDirect3D11 = false
 
-    public init(usesDirectX12: Bool = false, has64BitExecutable: Bool = false) {
+    public init(usesDirectX12: Bool = false, has64BitExecutable: Bool = false, uses32BitDirect3D11: Bool = false) {
         self.usesDirectX12 = usesDirectX12
         self.has64BitExecutable = has64BitExecutable
+        self.uses32BitDirect3D11 = uses32BitDirect3D11
     }
 
     /// Folders that hold installers, crash reporters and anti-cheat rather than the game.
@@ -24,10 +28,14 @@ public struct GraphicsProbe: Codable, Sendable, Equatable {
         (name == "d3d12core.dll" && folder == "d3d12") || name == "dxil.dll" || (name.hasPrefix("dxilconv") && name.hasSuffix(".dll"))
     }
     static func isDirectX12Import(_ dll: String) -> Bool { dll.contains("d3d12") || dll.contains("_dx12") }
+    static let direct3D11Imports: Set<String> = ["d3d11.dll", "d3d10.dll", "d3d10_1.dll", "d3d10core.dll", "dxgi.dll"]
+    /// Unity games keep the engine (and its Direct3D imports) in this DLL; their `.exe` is a small stub.
+    static let unityPlayer = "unityplayer.dll"
 
     public static func scan(_ directory: URL, maxDepth: Int = 4, maxExecutables: Int = 32) -> GraphicsProbe {
         var probe = GraphicsProbe()
         var executables: [(url: URL, image: PEImage)] = []
+        var unityPlayers: [PEImage] = []
         let base = directory.standardizedFileURL.pathComponents.count
         guard let walker = FileManager.default.enumerator(
             at: directory, includingPropertiesForKeys: [.isDirectoryKey, .fileSizeKey],
@@ -44,6 +52,11 @@ public struct GraphicsProbe: Codable, Sendable, Equatable {
             if isDirectX12File(name, folder: url.deletingLastPathComponent().lastPathComponent.lowercased()) {
                 probe.usesDirectX12 = true
             }
+            if name == unityPlayer, let image = PEImage(url: url) {
+                unityPlayers.append(image)
+                if image.is64Bit { probe.has64BitExecutable = true }
+                continue
+            }
             guard url.pathExtension.lowercased() == "exe", executables.count < maxExecutables,
                   (values?.fileSize ?? 0) >= minimumExecutableSize,
                   !skippedNames.contains(where: name.contains),
@@ -55,6 +68,11 @@ public struct GraphicsProbe: Codable, Sendable, Equatable {
         // Last resort, and the slow part (game executables can be hundreds of MB): look for the entry point.
         if !probe.usesDirectX12 {
             probe.usesDirectX12 = executables.contains { contains(Data("D3D12CreateDevice".utf8), in: $0.url) }
+        }
+        if !probe.usesDirectX12, !probe.has64BitExecutable {
+            let images = executables.map(\.image) + unityPlayers
+            probe.uses32BitDirect3D11 = images.contains { !$0.imports.isDisjoint(with: direct3D11Imports) }
+                || executables.contains { contains(Data("D3D11CreateDevice".utf8), in: $0.url) }
         }
         return probe
     }

@@ -129,6 +129,19 @@ private final class PhaseLog: @unchecked Sendable {
         #expect(m.latest(supporting: .dxmt) == nil)
     }
 
+    @Test func manifestSkipsEnginesThatNeedANewerApp() throws {
+        let json = #"""
+        {"engines":[{"version":"1.0.0","url":"https://x/a","sha256":"aa","size":1,"backends":["dxvk"]},
+                    {"version":"1.1.0","url":"https://x/b","sha256":"bb","size":1,"minAppVersion":"1.1.4","backends":["dxvk"]},
+                    {"version":"2.0.2","url":"https://x/c","sha256":"cc","size":1,"minAppVersion":"0.1","backends":["d3dMetal"]}]}
+        """#
+        let m = try EngineManifest.decode(Data(json.utf8))
+        #expect(m.usable(byApp: "1.1.3").latest(supporting: .dxvk)?.version == "1.0.0")
+        #expect(m.usable(byApp: "1.1.4").latest(supporting: .dxvk)?.version == "1.1.0")
+        #expect(m.usable(byApp: "1.1.10").latest(supporting: .dxvk)?.version == "1.1.0")
+        #expect(m.usable(byApp: "1.1.3").latest(supporting: .d3dMetal)?.version == "2.0.2")
+    }
+
     @Test func settingsWrittenBeforeBottleEnginesStillLoad() throws {
         let home = FileManager.default.temporaryDirectory.appendingPathComponent("macade-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: home) }
