@@ -19,7 +19,12 @@ and the engines load it from `/Library/Frameworks/GStreamer.framework`.
   GitHub release (https://github.com/abduzeedo/mapc-site/releases).
 - **Wine Staging in engine 1.x** and the **runtime libraries** in both engines (everything under "Runtime libraries"
   below) are Gcenx's macOS builds, version 11.18: https://github.com/Gcenx/macOS_Wine_builds/releases/tag/11.18
-  (libraries built with MacPorts; their sources are MacPorts' distfiles for those versions).
+  (libraries built with MacPorts; their sources are MacPorts' distfiles for those versions). Published next to each
+  1.x engine on its GitHub release: Wine 11.18's source, the Wine Staging v11.18 patches, the one upstream patch
+  Gcenx applies (Wine merge request 11538), and Gcenx's build recipe at the 11.18 tag.
+- **Wine Mono 11.3.0** in engine 1.x (`share/wine/mono`, Wine's .NET runtime) is the unmodified build bundled in
+  Gcenx's package. Its source, `wine-mono-11.3.0-src.tar.xz` from WineHQ, is published next to each 1.x engine.
+  Engine 1.x doesn't include Wine Gecko.
 - **DXVK** in engine 1.x: https://github.com/Gcenx/DXVK-macOS/releases/tag/v1.10.3-20230507-repack
 - **DXMT** in engine 2.x: v0.80, the unmodified release build from https://github.com/3Shain/dxmt/releases/tag/v0.80
   (source: https://github.com/3Shain/dxmt/tree/v0.80). Its `winemetal.so` contains LLVM 15, its shader converter
@@ -36,6 +41,7 @@ providing it: email support@mapc.games.
 | Wine (CodeWeavers CrossOver 26.3.0 source) | 2.x | LGPL-2.1-or-later | Wine-COPYING.LIB.txt, Wine-LICENSE.txt |
 | Wine Staging 11.18 | 1.x | LGPL-2.1-or-later | Wine-COPYING.LIB.txt, Wine-LICENSE.txt |
 | DXVK (macOS, async) 1.10.3 | 1.x | zlib | DXVK-LICENSE.txt |
+| Wine Mono 11.3.0 (Mono, FNA, WinForms, WPF and more) | 1.x | MIT, LGPL-2.0/2.1, GPL-2.0 with exception (SharpZipLib), MS-PL (FNA), zlib | wine-mono/ |
 | winpthreads (mingw-w64 11.0.1, linked into DXVK's DLLs) | 1.x | MIT-style and BSD-style | winpthreads-COPYING.txt |
 | DXMT 0.80 | 2.x | MIT | DXMT-LICENSE.txt |
 | LLVM 15 (inside DXMT's `winemetal.so`) | 2.x | Apache-2.0 WITH LLVM-exception | LLVM-LICENSE.txt |

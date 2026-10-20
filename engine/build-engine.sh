@@ -41,6 +41,11 @@ else echo "need mingw-w64 (brew install mingw-w64) to build the wrapper" >&2; ex
 ENG="$WORK/engine"; mkdir -p "$ENG"
 tar -xJf "$CACHE/$WINE_NAME" -C "$ENG"
 APP="$(ls -d "$ENG"/*.app | head -1)"; LIB="$APP/Contents/Resources/wine/lib/wine"
+# Gcenx bundles Wine Gecko (Firefox's engine, for Wine's mshtml). MaPC always disables mshtml, so it's never used:
+# leave it out rather than ship it. Wine Mono stays: .NET programs use it (licenses in licenses/wine-mono/).
+rm -rf "$APP/Contents/Resources/wine/share/wine/gecko"
+[ -d "$APP/Contents/Resources/wine/share/wine/mono/wine-mono-11.3.0" ] \
+  || { echo "expected Wine Mono 11.3.0 in the Wine build (update licenses-wine-mono-*)" >&2; exit 1; }
 tar -xzf "$CACHE/$DXVK_NAME" -C "$WORK"
 DX="$(ls -d "$WORK"/dxvk-macOS*/ | head -1)"
 # Copied into each environment as native DLLs at launch (NativeBackendDLLs); Wine's builtins stay untouched.
@@ -52,14 +57,17 @@ mkdir -p "$ENG/licenses/build"
 cp licenses/* "$ENG/licenses/"
 # Libraries Wine builds into its own DLLs (libs/ in Wine's source), from upstream Wine 11.18.
 mkdir -p "$ENG/licenses/wine-libs"; cp licenses-wine-11.18-libs/* "$ENG/licenses/wine-libs/"
+mkdir -p "$ENG/licenses/wine-mono"; cp licenses-wine-mono-11.3.0/* "$ENG/licenses/wine-mono/"
 cp build-engine.sh manifest-add.py steamwebhelper-wrapper/wrapper.c "$ENG/licenses/build/"
 cat > "$ENG/ENGINE.json" <<JSON
 { "version": "$VERSION", "wineVersion": "11.18 (Staging)", "backends": ["dxvk"], "minMacOS": "15.0" }
 JSON
-cat > "$ENG/licenses/NOTICE.txt" <<'TXT'
-MaPC engine. Third-party software and licenses: THIRD-PARTY-NOTICES.md (this folder).
-Wine Staging (LGPL-2.1+): https://www.winehq.org  - build: https://github.com/Gcenx/macOS_Wine_builds
+cat > "$ENG/licenses/NOTICE.txt" <<TXT
+MaPC engine $VERSION. Third-party software and licenses: THIRD-PARTY-NOTICES.md (this folder).
+Wine Staging 11.18 (LGPL-2.1+): https://www.winehq.org  - build: https://github.com/Gcenx/macOS_Wine_builds
+Wine Mono 11.3.0 (MIT, LGPL, GPL with exception, MS-PL, zlib; see wine-mono/): https://gitlab.winehq.org/mono/wine-mono
 DXVK (zlib), macOS fork: https://github.com/Gcenx/DXVK-macOS
+Source: published with this engine at https://github.com/abduzeedo/mapc-site/releases/tag/engine-$VERSION
 No Apple software is included. Source offer: support@mapc.games, for at least three years.
 TXT
 
