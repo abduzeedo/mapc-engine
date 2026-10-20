@@ -69,11 +69,13 @@ ln -s "$BREW/opt/sdl2/include/SDL2" "$DEPS/include/SDL2"
 # install the official GStreamer.framework themselves (gstreamer.freedesktop.org, universal) and winegstreamer.so
 # finds it through this rpath, like Gcenx's engine 1.x. Building needs the GStreamer "devel" package on this Mac.
 GST_FW=/Library/Frameworks/GStreamer.framework
-GST_PC="$GST_FW/Versions/1.0/bin/pkg-config"
+# The framework has .pc files but no pkg-config of its own; read them with pkg-config from PATH (Homebrew).
+GST_PCDIR="$GST_FW/Versions/1.0/lib/pkgconfig"
+GST_PC() { PKG_CONFIG_PATH="$GST_PCDIR" PKG_CONFIG_LIBDIR="$GST_PCDIR" pkg-config "$@"; }
 GST_MODULES="gstreamer-1.0 gstreamer-base-1.0 gstreamer-video-1.0 gstreamer-audio-1.0 gstreamer-tag-1.0"
-[ -x "$GST_PC" ] && "$GST_PC" --exists $GST_MODULES \
+command -v pkg-config >/dev/null && GST_PC --exists $GST_MODULES \
   || { echo "GStreamer devel isn't installed ($GST_FW); install gstreamer-1.0-devel-*-universal.pkg" >&2; exit 1; }
-GST_CFLAGS="$("$GST_PC" --cflags $GST_MODULES)"; GST_LIBS="$("$GST_PC" --libs $GST_MODULES)"
+GST_CFLAGS="$(GST_PC --cflags $GST_MODULES)"; GST_LIBS="$(GST_PC --libs $GST_MODULES)"
 CLEAN_ENV=(/usr/bin/env -i HOME="$HOME" PATH="$BREW/opt/bison/bin:$BREW/bin:/usr/bin:/bin:/usr/sbin:/sbin" MACOSX_DEPLOYMENT_TARGET=14.0)
 if [ "${RESUME:-0}" != 1 ] || [ ! -f "$WORK/build/Makefile" ]; then
   rm -rf "$WORK/sources/wine" "$WORK/build"
