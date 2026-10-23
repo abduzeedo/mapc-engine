@@ -11,6 +11,8 @@ public struct LogDiagnosis: Equatable, Sendable {
         case setUpDirectX12
         /// Replace engine `from`, which the engine list dropped, with `to` (see `EngineManifest.updates`).
         case updateEngine(from: String, to: String)
+        /// The store released an update the game needs before it starts (Epic, through legendary).
+        case updateGame
         case reportProblem
         case none
     }
@@ -123,6 +125,12 @@ public struct LogDiagnosis: Equatable, Sendable {
             add("missing-dll", "A Windows file the game needs is missing",
                 "The game looks for \(dll ?? "a DLL") and can't find it. Verifying the game's files in its store, or reinstalling it, usually brings it back.",
                 .reportProblem, e)
+        }
+        // legendary refuses to start an Epic game the store has updated (seen with Alan Wake 2 1.2.10 -> 1.2.11).
+        if let e = line("Game is out of date") {
+            add("game-update", "The game needs an update",
+                "The store released an update for this game, and the game can't start until it's installed.",
+                .updateGame, e)
         }
         if let e = line("ShellExecuteEx failed") ?? line("Application could not be started") {
             add("not-found", "The game's program couldn't be started",

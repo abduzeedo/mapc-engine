@@ -86,6 +86,22 @@ import Testing
         #expect(ids(LogDiagnosis(log: "", probe: GraphicsProbe(usesDirectX12: true))) == ["needs-dx12"])
     }
 
+    /// Alan Wake 2 after Epic released 1.2.11: legendary stopped before starting Wine.
+    @Test func outOfDateEpicGameAsksForTheUpdate() {
+        let log = """
+        [MaPC] Launch 2026-10-23T20:41:45Z engine=2.0.2 wine=11.0, from CrossOver 26.3.0 source environment=epic backend=d3dMetal
+        [cli] INFO: Checking for updates...
+        [cli] ERROR: Game is out of date, please update or launch with update check skipping!
+
+        [MaPC] Exit 2026-10-23T20:41:53Z pid=77674 status=1 reason=exit
+        """
+        let d = LogDiagnosis(log: log)
+        #expect(ids(d) == ["game-update"])
+        #expect(d.findings[0].action == .updateGame)
+        #expect(EpicProvider.needsUpdate(launchOutput: log))
+        #expect(!EpicProvider.needsUpdate(launchOutput: "[cli] INFO: Launching 63a6..."))
+    }
+
     @Test func missingDLLIsNamed() {
         let log = "0124:err:module:import_dll Library d3dx9_43.dll (which is needed by L\"C:\\\\Game\\\\game.exe\") not found"
         let d = LogDiagnosis(log: log)
