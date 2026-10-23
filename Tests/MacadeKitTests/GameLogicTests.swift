@@ -17,7 +17,7 @@ private func fixtureData(_ name: String) throws -> Data {
         #expect(env == [
             "HOME": "/Users/x", "PATH": "/usr/bin", "LANG": "en_US.UTF-8",
             "WINEPREFIX": "/tmp/m/Bottles/steam",
-            "WINEDEBUG": "-all,err+module", "MVK_CONFIG_LOG_LEVEL": "2",
+            "WINEDEBUG": "-all,err+module", "MVK_CONFIG_LOG_LEVEL": "1",
             "WINEESYNC": "1", "WINEMSYNC": "1", "ROSETTA_ADVERTISE_AVX": "1",
             "WINEDLLOVERRIDES": "mscoree,mshtml=;winemenubuilder.exe=d;d3d11,d3d10core=n,b",
             "DXVK_ASYNC": "1", "MVK_CONFIG_RESUME_LOST_DEVICE": "1",

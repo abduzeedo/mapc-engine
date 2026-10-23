@@ -58,11 +58,11 @@ public struct WineRunner: Sendable {
 
         env["WINEPREFIX"] = bottle.url.path
         // Default logs keep Wine's DLL-loading errors (what `LogDiagnosis` reads for a missing DLL) and MoltenVK's
-        // errors and warnings (a GPU fault it recovered from is a warning). MoltenVK's info level prints its whole
-        // extension list for every Vulkan instance, which filled 95-100% of the logs in user reports and pushed the
-        // useful lines out of the report's tail.
+        // errors only. Its info level prints its whole extension list for every Vulkan instance (95-100% of the
+        // logs in user reports), and its warning level repeats "VkDescriptorPool exhausted" every frame in some
+        // games: single logs of 1.1-6.4 GB. DXVK still logs device loss itself.
         env["WINEDEBUG"] = profile.verboseLogs ? "err+all,warn+module" : "-all,err+module"
-        if !profile.verboseLogs { env["MVK_CONFIG_LOG_LEVEL"] = "2" }
+        if !profile.verboseLogs { env["MVK_CONFIG_LOG_LEVEL"] = "1" }
         env["WINEESYNC"] = "1"
         env["WINEMSYNC"] = "1"
         env["ROSETTA_ADVERTISE_AVX"] = "1"
