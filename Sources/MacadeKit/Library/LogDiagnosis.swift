@@ -102,6 +102,13 @@ public struct LogDiagnosis: Equatable, Sendable {
                 "The game's graphics crashed under Vulkan. Another Graphics option may work better.",
                 launch?.backend == GraphicsBackend.dxvk.rawValue && dxmtAvailable ? .useBackend(.dxmt) : .reportProblem, e)
         }
+        // Batman: Arkham Knight on DXVK: Metal rejects shaders MoltenVK translated, so whatever they draw is missing.
+        if launch?.backend == GraphicsBackend.dxvk.rawValue,
+           let e = line("Shader library compile failed") ?? line("Render pipeline compile failed") {
+            add("mvk-pipelines", "Parts of the picture can't be drawn",
+                "Some of the game's shaders don't translate from Vulkan to Metal, so objects or effects can be missing. DXMT translates DirectX 11 to Metal directly.",
+                dxmtAvailable ? .useBackend(.dxmt) : .installExtendedEngine, e)
+        }
         if let e = line("ImportSharedTexture: Invalid shared handle type") {
             // Seen with The Lion's Song: its video player decodes into a shared Direct3D 9 surface and opens it in
             // Direct3D 11. Wine's Direct3D 9 doesn't share surfaces yet, so the handle is empty and the game crashes.

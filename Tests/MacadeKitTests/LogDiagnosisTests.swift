@@ -115,6 +115,25 @@ import Testing
         #expect(d.findings[0].action == .installDotNet)
     }
 
+    /// Batman: Arkham Knight on DXVK: no cape.
+    @Test func untranslatableShadersPointToDXMT() {
+        let log = """
+        [MaPC] Launch 2026-10-23T23:00:17Z engine=1.0.1 wine=11.18 (Staging) environment=epic backend=dxvk
+        [mvk-error] VK_ERROR_INITIALIZATION_FAILED: Shader library compile failed (Error code 3):
+        program_source:134:35: error: as_type cast from 'uint[1]' (aka 'unsigned int[1]') to 'float' is not allowed
+        """
+        #expect(LogDiagnosis(log: log, dxmtAvailable: true).findings.map(\.action) == [.useBackend(.dxmt)])
+        #expect(LogDiagnosis(log: log).findings.map(\.action) == [.installExtendedEngine])
+        #expect(ids(LogDiagnosis(log: log.replacingOccurrences(of: "backend=dxvk", with: "backend=dxmt"))).isEmpty)
+    }
+
+    @Test func arkhamKnightResolvesToDXMT() {
+        #expect(GraphicsBackend.auto.resolved(dxmtAvailable: true, gameID: "epic:Cowbird") == .dxmt)
+        #expect(GraphicsBackend.auto.resolved(dxmtAvailable: false, gameID: "epic:Cowbird") == .dxvk)
+        #expect(GraphicsBackend.auto.resolved(dxmtAvailable: true, gameID: "epic:Other") == .dxvk)
+        #expect(GraphicsBackend.dxvk.resolved(dxmtAvailable: true, gameID: "steam:208650") == .dxvk)
+    }
+
     @Test func missingDLLIsNamed() {
         let log = "0124:err:module:import_dll Library d3dx9_43.dll (which is needed by L\"C:\\\\Game\\\\game.exe\") not found"
         let d = LogDiagnosis(log: log)
