@@ -24,6 +24,12 @@ public struct Engine: Sendable, Equatable {
     public var wineRoot: URL { Self.findWineRoot(in: directory) ?? directory.appendingPathComponent("wine") }
     public var wine: URL { wineRoot.appendingPathComponent("bin/wine") }
     public var wineserver: URL { wineRoot.appendingPathComponent("bin/wineserver") }
+    /// The engine ships Wine Mono in `share/wine/mono` (engine 1.x), which Wine uses for every bottle without
+    /// installing it into one. Mafia II: Definitive Edition's .NET launcher needs it.
+    public var shipsMono: Bool {
+        let mono = wineRoot.appendingPathComponent("share/wine/mono")
+        return ((try? FileManager.default.contentsOfDirectory(atPath: mono.path)) ?? []).contains { $0.hasPrefix("wine-mono-") }
+    }
     /// The `steamwebhelper` replacement that forces software rendering (spike finding).
     public var steamWebHelperWrapper: URL { directory.appendingPathComponent("steamwebhelper-wrapper.exe") }
     /// Apple's D3DMetal bridge. CrossOver-based engines load it from the path in
