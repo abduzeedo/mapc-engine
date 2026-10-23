@@ -161,6 +161,24 @@ import Testing
         #expect(WineRunner.environment(bottle: bottle, profile: profile)["WINEDLLOVERRIDES"] == "mshtml=;winemenubuilder.exe=d")
     }
 
+    @Test func engineThatShipsMonoUnblocksMscoree() throws {
+        let (paths, home) = tempPaths()
+        defer { try? FileManager.default.removeItem(at: home) }
+        let dir = home.appendingPathComponent("engine")
+        try FileManager.default.createDirectory(at: dir.appendingPathComponent("wine/bin"), withIntermediateDirectories: true)
+        try #"{"version":"1","wineVersion":"x","backends":[],"minMacOS":"14.0"}"#
+            .write(to: dir.appendingPathComponent("ENGINE.json"), atomically: true, encoding: .utf8)
+        var profile = LaunchProfile()
+        profile.backend = .wined3d
+        let bottle = Bottle(kind: .epic, paths: paths)
+        let engine = try #require(Engine(directory: dir))
+        #expect(!engine.shipsMono)
+        #expect(WineRunner.environment(bottle: bottle, profile: profile, engine: engine)["WINEDLLOVERRIDES"]?.hasPrefix("mscoree,") == true)
+        try FileManager.default.createDirectory(at: dir.appendingPathComponent("wine/share/wine/mono/wine-mono-11.3.0"), withIntermediateDirectories: true)
+        #expect(engine.shipsMono)
+        #expect(WineRunner.environment(bottle: bottle, profile: profile, engine: engine)["WINEDLLOVERRIDES"] == "mshtml=;winemenubuilder.exe=d")
+    }
+
     @Test func monoPinMatchesWinesOwn() {
         #expect(WineMono.sha256.count == 64)
         #expect(WineMono.downloadURL.absoluteString == "https://dl.winehq.org/wine/wine-mono/10.4.1/wine-mono-10.4.1-x86.msi")

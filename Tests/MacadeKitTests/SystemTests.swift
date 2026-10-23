@@ -81,6 +81,42 @@ private final class Box: @unchecked Sendable {
         #expect(logs[0].lastPathComponent > logs[2].lastPathComponent)
     }
 
+    /// A user wrote that logs took too much space; single logs reached 6.4 GB.
+    @Test func tidyTrimsBigFinishedLogsAndRemovesOldOnes() throws {
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent("macade-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: home) }
+        var store = LogStore(paths: Paths(home: home))
+        store.trimAbove = 4096
+        store.headBytes = 100
+        store.tailBytes = 200
+        let now = Date()
+        let fm = FileManager.default
+        func write(_ game: String, _ name: String, _ text: String, age: TimeInterval) throws -> URL {
+            let dir = Paths(home: home).gameLogs(game)
+            try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+            let url = dir.appendingPathComponent(name)
+            try text.write(to: url, atomically: true, encoding: .utf8)
+            try fm.setAttributes([.modificationDate: now.addingTimeInterval(-age)], ofItemAtPath: url.path)
+            return url
+        }
+        let spam = String(repeating: "[mvk-warn] VkDescriptorPool exhausted\n", count: 500)
+        let finished = try write("gog-1", "a.log", "[MaPC] Launch engine=1.0.1\n" + spam + "wine: Unhandled page fault\n[MaPC] Exit status=5\n", age: 60)
+        let running = try write("steam", "b.log", "[MaPC] Launch engine=2.0.2\n" + spam, age: 60)
+        let old = try write("epic-Old", "c.log", "[MaPC] Launch\n[MaPC] Exit status=0\n", age: 40 * 86_400)
+
+        store.tidy(now: now)
+
+        let trimmed = try String(contentsOf: finished, encoding: .utf8)
+        #expect(trimmed.hasPrefix("[MaPC] Launch engine=1.0.1"))
+        #expect(trimmed.contains("[MaPC] Trimmed"))
+        #expect(trimmed.hasSuffix("wine: Unhandled page fault\n[MaPC] Exit status=5\n"))
+        #expect(trimmed.utf8.count < 1024)
+        #expect(LogDiagnosis(log: trimmed).launch?.status == 5)
+        #expect(try String(contentsOf: running, encoding: .utf8).utf8.count > 4096)   // may still be written to
+        #expect(!fm.fileExists(atPath: old.path))
+        #expect(!fm.fileExists(atPath: old.deletingLastPathComponent().path))       // empty folder removed
+    }
+
     @Test func excerptReturnsTail() throws {
         let home = FileManager.default.temporaryDirectory.appendingPathComponent("macade-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: home) }

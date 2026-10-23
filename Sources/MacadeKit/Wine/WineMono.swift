@@ -40,9 +40,11 @@ public struct WineMono: Sendable {
         return cachedInstaller
     }
 
-    /// Installs Wine Mono into `bottle`. Does nothing when it's already there.
+    /// Installs Wine Mono into `bottle`. Does nothing when it's already there, or when the engine ships its own:
+    /// a copy in the bottle wins over the engine's, and 10.4.1 there left Mafia II's launcher spinning on engine 1.0.1
+    /// (Wine 11.18, which ships 11.3).
     public func ensureInstalled(in bottle: Bottle, engine: Engine) async throws {
-        guard !bottle.hasMono else { return }
+        guard !bottle.hasMono, !engine.shipsMono else { return }
         let installer = try await verifiedInstaller()
         var env = WineRunner.environment(bottle: bottle, profile: LaunchProfile())
         env["WINEDLLOVERRIDES"] = "mshtml=;winemenubuilder.exe=d"   // the MSI itself must not be held back

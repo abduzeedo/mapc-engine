@@ -57,17 +57,22 @@ public struct WineRunner: Sendable {
         let backend = profile.backend.resolved()
 
         env["WINEPREFIX"] = bottle.url.path
-        env["WINEDEBUG"] = profile.verboseLogs ? "err+all,warn+module" : "-all"
+        // Default logs keep Wine's DLL-loading errors (what `LogDiagnosis` reads for a missing DLL) and MoltenVK's
+        // errors only. Its info level prints its whole extension list for every Vulkan instance (95-100% of the
+        // logs in user reports), and its warning level repeats "VkDescriptorPool exhausted" every frame in some
+        // games: single logs of 1.1-6.4 GB. DXVK still logs device loss itself.
+        env["WINEDEBUG"] = profile.verboseLogs ? "err+all,warn+module" : "-all,err+module"
+        if !profile.verboseLogs { env["MVK_CONFIG_LOG_LEVEL"] = "1" }
         env["WINEESYNC"] = "1"
         env["WINEMSYNC"] = "1"
         env["ROSETTA_ADVERTISE_AVX"] = "1"
 
-        // No Mono/Gecko prompts, no Launchpad stubs. A bottle that has Wine Mono keeps it enabled.
+        // No Mono/Gecko prompts, no Launchpad stubs. A bottle that has Wine Mono, or an engine that ships it, keeps it enabled.
         // DXVK/DXMT overrides only on an engine that ships them. On a D3DMetal engine they would do nothing but
         // let a game pick up the native Direct3D DLLs that `WineD3DFallback` puts in System32 for one launcher.
         let shipsBackend = engine.map { $0.info.backends.contains(backend.rawValue) } ?? true
         let backendOverrides = shipsBackend ? backend.overrides : []
-        let overrides = [bottle.hasMono ? "mshtml=" : "mscoree,mshtml=", "winemenubuilder.exe=d"] + backendOverrides + extraOverrides
+        let overrides = [bottle.hasMono || engine?.shipsMono == true ? "mshtml=" : "mscoree,mshtml=", "winemenubuilder.exe=d"] + backendOverrides + extraOverrides
         env["WINEDLLOVERRIDES"] = overrides.joined(separator: ";")
 
         for (k, v) in backend.environment { env[k] = v }

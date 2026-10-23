@@ -86,6 +86,35 @@ import Testing
         #expect(ids(LogDiagnosis(log: "", probe: GraphicsProbe(usesDirectX12: true))) == ["needs-dx12"])
     }
 
+    /// Alan Wake 2 after Epic released 1.2.11: legendary stopped before starting Wine.
+    @Test func outOfDateEpicGameAsksForTheUpdate() {
+        let log = """
+        [MaPC] Launch 2026-10-23T20:41:45Z engine=2.0.2 wine=11.0, from CrossOver 26.3.0 source environment=epic backend=d3dMetal
+        [cli] INFO: Checking for updates...
+        [cli] ERROR: Game is out of date, please update or launch with update check skipping!
+
+        [MaPC] Exit 2026-10-23T20:41:53Z pid=77674 status=1 reason=exit
+        """
+        let d = LogDiagnosis(log: log)
+        #expect(ids(d) == ["game-update"])
+        #expect(d.findings[0].action == .updateGame)
+        #expect(EpicProvider.needsUpdate(launchOutput: log))
+        #expect(!EpicProvider.needsUpdate(launchOutput: "[cli] INFO: Launching 63a6..."))
+    }
+
+    /// Mafia II: Definitive Edition on Epic: its launcher is .NET and the environment had no Wine Mono.
+    @Test func dotNetLauncherAsksForMono() {
+        let log = """
+        [MaPC] Launch 2026-10-23T23:14:01Z engine=1.0.1 wine=11.18 (Staging) environment=epic backend=dxvk
+        [MaPC] Exit 2026-10-23T23:14:05Z pid=23524 status=0 reason=exit
+        0024:err:module:fixup_imports_ilonly mscoree.dll not found, IL-only binary L"Launcher.exe" cannot be loaded
+        0024:err:module:loader_init Importing dlls for L"Z:\\Games\\MafiaIIDE\\pc\\Mafia2Launcher\\Launcher.exe" failed, status c0000135
+        """
+        let d = LogDiagnosis(log: log)
+        #expect(ids(d) == ["needs-dotnet"])
+        #expect(d.findings[0].action == .installDotNet)
+    }
+
     @Test func missingDLLIsNamed() {
         let log = "0124:err:module:import_dll Library d3dx9_43.dll (which is needed by L\"C:\\\\Game\\\\game.exe\") not found"
         let d = LogDiagnosis(log: log)
@@ -93,10 +122,37 @@ import Testing
         #expect(d.findings[0].detail.contains("d3dx9_43.dll"))
     }
 
+    /// Default logs now keep `err:module`, and a game started in a fresh Steam writes into Steam's log.
+    @Test func steamClientMissingDLLIsNotTheGames() {
+        let helper = "0130:err:module:import_dll Library dwmapi.dll (which is needed by L\"C:\\\\Program Files (x86)\\\\Steam\\\\bin\\\\cef\\\\cef.win64\\\\steamwebhelper_real.exe\") not found"
+        #expect(ids(LogDiagnosis(log: helper)).isEmpty)
+        let game = "0124:err:module:import_dll Library d3dx9_43.dll (which is needed by L\"C:\\\\Program Files (x86)\\\\Steam\\\\steamapps\\\\common\\\\Game\\\\game.exe\") not found"
+        #expect(ids(LogDiagnosis(log: helper + "\n" + game)) == ["missing-dll"])
+    }
+
     @Test func antiCheatAndGenericCrash() {
         #expect(ids(LogDiagnosis(log: "Loading EasyAntiCheat_EOS.sys")) == ["anti-cheat"])
         let crash = "wine: Unhandled page fault on write access to 0000000000000006 at address 000000014004EC2F (thread 0598)"
         #expect(ids(LogDiagnosis(log: crash)) == ["crash"])
+    }
+
+    @Test func gtaVBattlEyeBlocksOnlyOnline() {
+        // BattlEye's service lives in Common Files, so the line doesn't name the game; the title does.
+        let log = #"0140:err:module:process_init L"C:\\Program Files (x86)\\Common Files\\BattlEye\\BEService_x64.exe" failed"#
+        for title in ["Grand Theft Auto V", "Grand Theft Auto V Enhanced", "Grand Theft Auto V Legacy", "GTA V"] {
+            let d = LogDiagnosis(log: log, title: title)
+            #expect(ids(d) == ["anti-cheat-online"], "\(title)")
+            #expect(d.findings[0].title.contains("Story Mode"))
+            #expect(d.findings[0].action == LogDiagnosis.Action.none)
+        }
+        // Without a title, GTA V's own programs in the log are enough.
+        #expect(ids(LogDiagnosis(log: log + "\nStarting PlayGTAV.exe")) == ["anti-cheat-online"])
+        #expect(ids(LogDiagnosis(log: log + "\n" + #"0130:fixme:ver:GetCurrentPackageId C:\\GTAV\\GTA5_Enhanced_BE.exe"#)) == ["anti-cheat-online"])
+        // Other BattlEye games, other GTAs and other anti-cheats keep the general finding.
+        for title in [nil, "PUBG: BATTLEGROUNDS", "Grand Theft Auto IV", "Grand Theft Auto: Vice City", "Grand Theft Auto Vice City"] {
+            #expect(ids(LogDiagnosis(log: log, title: title)) == ["anti-cheat"], "\(title ?? "no title")")
+        }
+        #expect(ids(LogDiagnosis(log: "Loading EasyAntiCheat_EOS.sys", title: "Grand Theft Auto V")) == ["anti-cheat"])
     }
 
     @Test func cleanRunHasNoFindingsAndAShortExcerpt() {

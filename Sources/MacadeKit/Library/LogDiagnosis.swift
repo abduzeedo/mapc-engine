@@ -11,6 +11,10 @@ public struct LogDiagnosis: Equatable, Sendable {
         case setUpDirectX12
         /// Replace engine `from`, which the engine list dropped, with `to` (see `EngineManifest.updates`).
         case updateEngine(from: String, to: String)
+        /// The store released an update the game needs before it starts (Epic, through legendary).
+        case updateGame
+        /// The game's program is .NET and the environment has no runtime: install Wine Mono (`WineMono`) into it.
+        case installDotNet
         case reportProblem
         case none
     }
@@ -61,9 +65,10 @@ public struct LogDiagnosis: Equatable, Sendable {
     }
 
     /// `engineUpdates`: installed engines the engine list replaced (`EngineManifest.updates`), so a crash at start on
-    /// one of them points to its replacement instead of a report.
+    /// one of them points to its replacement instead of a report. `title`: the game's name, for findings that depend
+    /// on the game (the log often doesn't name it).
     public init(log: String, probe: GraphicsProbe? = nil, dxmtAvailable: Bool = false, d3dMetalAvailable: Bool = false,
-                engineUpdates: [EngineManifest.Update] = []) {
+                engineUpdates: [EngineManifest.Update] = [], title: String? = nil) {
         let lines = log.split(whereSeparator: \.isNewline).map(String.init)
         let launch = Self.lastLaunch(in: lines)
         self.launch = launch
@@ -112,17 +117,36 @@ public struct LogDiagnosis: Equatable, Sendable {
         }
         for name in ["EasyAntiCheat", "BattlEye", "BEService", "vgk.sys", "Ricochet", "EAAntiCheat", "nProtect", "XIGNCODE"] {
             if let e = line(name) {
-                add("anti-cheat", "The game uses anti-cheat that doesn't run on a Mac",
-                    "Kernel-level anti-cheat needs Windows itself. There's no setting that fixes this.", .none, e)
+                if name == "BattlEye" || name == "BEService", Self.isGTAV(title: title, lines: lines) {
+                    // GTA V's BattlEye (since September 2024) guards GTA Online only; Story Mode runs without it.
+                    add("anti-cheat-online", "GTA Online can't run on a Mac, but Story Mode can",
+                        "GTA Online needs BattlEye, kernel-level anti-cheat that needs Windows itself. Story Mode doesn't: choose Story Mode when the game starts. If the game doesn't start at all, anti-cheat isn't the reason.",
+                        .none, e)
+                } else {
+                    add("anti-cheat", "The game uses anti-cheat that doesn't run on a Mac",
+                        "Kernel-level anti-cheat needs Windows itself. There's no setting that fixes this.", .none, e)
+                }
                 break
             }
         }
-        if let e = lines.last(where: { $0.contains("err:module:import_dll") && $0.contains("not found") }) {
+        if let e = lines.last(where: { $0.contains("err:module:import_dll") && $0.contains("not found") && !Self.isSteamClientLine($0) }) {
             let dll = e.range(of: #"Library ([^\s]+) "#, options: .regularExpression)
                 .map { String(e[$0]).replacingOccurrences(of: "Library ", with: "").trimmingCharacters(in: .whitespaces) }
             add("missing-dll", "A Windows file the game needs is missing",
                 "The game looks for \(dll ?? "a DLL") and can't find it. Verifying the game's files in its store, or reinstalling it, usually brings it back.",
                 .reportProblem, e)
+        }
+        // Mafia II: Definitive Edition's launcher (Epic) is a .NET program; Wine stops it before it opens.
+        if let e = line("IL-only binary") {
+            add("needs-dotnet", "The game needs .NET",
+                "Its launcher is a .NET program, and this environment doesn't have Wine Mono, Wine's open-source .NET runtime. Installing it there lets the launcher open.",
+                .installDotNet, e)
+        }
+        // legendary refuses to start an Epic game the store has updated (seen with Alan Wake 2 1.2.10 -> 1.2.11).
+        if let e = line("Game is out of date") {
+            add("game-update", "The game needs an update",
+                "The store released an update for this game, and the game can't start until it's installed.",
+                .updateGame, e)
         }
         if let e = line("ShellExecuteEx failed") ?? line("Application could not be started") {
             add("not-found", "The game's program couldn't be started",
@@ -166,6 +190,22 @@ public struct LogDiagnosis: Equatable, Sendable {
     }
 
     // MARK: Helpers
+
+    /// A Wine line about one of Steam's own programs (its web helper, service, overlay). A game started in a fresh
+    /// Steam shares Steam's log, so their errors aren't the game's. Games themselves live in `Steam\steamapps`.
+    static func isSteamClientLine(_ line: String) -> Bool {
+        let path = line.lowercased().replacingOccurrences(of: #"\\"#, with: #"\"#)
+        return path.contains(#"\steam\"#) && !path.contains(#"\steamapps\"#)
+    }
+
+    /// GTA V (Legacy or Enhanced), by its name or by its programs in the log. The "V" must end the word, so
+    /// "Grand Theft Auto IV" and "Grand Theft Auto Vice City" don't count.
+    static func isGTAV(title: String?, lines: [String]) -> Bool {
+        if let title, title.range(of: #"\b(grand theft auto|gta) ?(v|5)\b"#, options: [.regularExpression, .caseInsensitive]) != nil {
+            return true
+        }
+        return lines.contains { $0.range(of: #"\b(gta5(_enhanced)?(_be)?|playgtav)\.exe\b"#, options: [.regularExpression, .caseInsensitive]) != nil }
+    }
 
     static func trim(_ line: String) -> String {
         let t = line.trimmingCharacters(in: .whitespaces)

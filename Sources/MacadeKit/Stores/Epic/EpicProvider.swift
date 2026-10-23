@@ -104,6 +104,20 @@ public struct EpicProvider: StoreProvider, Sendable {
         guard r.succeeded else { throw EpicError.commandFailed("The install didn't finish. You can resume it.") }
     }
 
+    /// Installs the update Epic released for an installed game, in place. legendary won't start a game that has
+    /// one (`Game is out of date`). Cancelling stops the download; running again resumes it.
+    public func update(_ game: Game, onProgress: @escaping @Sendable (Double) -> Void) async throws {
+        let r = try await ProcessRunner.run(legendary, ["update", game.storeID, "-y"], environment: environment) { line in
+            switch line {
+            case .stdout(let s), .stderr(let s): if let p = LegendaryParser.progress(from: s) { onProgress(p) }
+            }
+        }
+        guard r.succeeded else { throw EpicError.commandFailed("The update didn't finish. You can resume it.") }
+    }
+
+    /// The text legendary prints when a game has an update it must install before launching.
+    public static func needsUpdate(launchOutput: String) -> Bool { launchOutput.contains("Game is out of date") }
+
     public func uninstall(_ game: Game) async throws {
         let r = try await run(["uninstall", game.storeID, "-y"])
         guard r.succeeded else { throw EpicError.commandFailed("Couldn't uninstall \(game.title).") }
