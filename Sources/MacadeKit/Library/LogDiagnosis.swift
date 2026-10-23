@@ -65,9 +65,10 @@ public struct LogDiagnosis: Equatable, Sendable {
     }
 
     /// `engineUpdates`: installed engines the engine list replaced (`EngineManifest.updates`), so a crash at start on
-    /// one of them points to its replacement instead of a report.
+    /// one of them points to its replacement instead of a report. `title`: the game's name, for findings that depend
+    /// on the game (the log often doesn't name it).
     public init(log: String, probe: GraphicsProbe? = nil, dxmtAvailable: Bool = false, d3dMetalAvailable: Bool = false,
-                engineUpdates: [EngineManifest.Update] = []) {
+                engineUpdates: [EngineManifest.Update] = [], title: String? = nil) {
         let lines = log.split(whereSeparator: \.isNewline).map(String.init)
         let launch = Self.lastLaunch(in: lines)
         self.launch = launch
@@ -116,8 +117,15 @@ public struct LogDiagnosis: Equatable, Sendable {
         }
         for name in ["EasyAntiCheat", "BattlEye", "BEService", "vgk.sys", "Ricochet", "EAAntiCheat", "nProtect", "XIGNCODE"] {
             if let e = line(name) {
-                add("anti-cheat", "The game uses anti-cheat that doesn't run on a Mac",
-                    "Kernel-level anti-cheat needs Windows itself. There's no setting that fixes this.", .none, e)
+                if name == "BattlEye" || name == "BEService", Self.isGTAV(title: title, lines: lines) {
+                    // GTA V's BattlEye (since September 2024) guards GTA Online only; Story Mode runs without it.
+                    add("anti-cheat-online", "GTA Online can't run on a Mac, but Story Mode can",
+                        "GTA Online needs BattlEye, kernel-level anti-cheat that needs Windows itself. Story Mode doesn't: choose Story Mode when the game starts. If the game doesn't start at all, anti-cheat isn't the reason.",
+                        .none, e)
+                } else {
+                    add("anti-cheat", "The game uses anti-cheat that doesn't run on a Mac",
+                        "Kernel-level anti-cheat needs Windows itself. There's no setting that fixes this.", .none, e)
+                }
                 break
             }
         }
@@ -188,6 +196,15 @@ public struct LogDiagnosis: Equatable, Sendable {
     static func isSteamClientLine(_ line: String) -> Bool {
         let path = line.lowercased().replacingOccurrences(of: #"\\"#, with: #"\"#)
         return path.contains(#"\steam\"#) && !path.contains(#"\steamapps\"#)
+    }
+
+    /// GTA V (Legacy or Enhanced), by its name or by its programs in the log. The "V" must end the word, so
+    /// "Grand Theft Auto IV" and "Grand Theft Auto Vice City" don't count.
+    static func isGTAV(title: String?, lines: [String]) -> Bool {
+        if let title, title.range(of: #"\b(grand theft auto|gta) ?(v|5)\b"#, options: [.regularExpression, .caseInsensitive]) != nil {
+            return true
+        }
+        return lines.contains { $0.range(of: #"\b(gta5(_enhanced)?(_be)?|playgtav)\.exe\b"#, options: [.regularExpression, .caseInsensitive]) != nil }
     }
 
     static func trim(_ line: String) -> String {

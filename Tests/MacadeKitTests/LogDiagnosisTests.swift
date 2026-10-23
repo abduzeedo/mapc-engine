@@ -136,6 +136,25 @@ import Testing
         #expect(ids(LogDiagnosis(log: crash)) == ["crash"])
     }
 
+    @Test func gtaVBattlEyeBlocksOnlyOnline() {
+        // BattlEye's service lives in Common Files, so the line doesn't name the game; the title does.
+        let log = #"0140:err:module:process_init L"C:\\Program Files (x86)\\Common Files\\BattlEye\\BEService_x64.exe" failed"#
+        for title in ["Grand Theft Auto V", "Grand Theft Auto V Enhanced", "Grand Theft Auto V Legacy", "GTA V"] {
+            let d = LogDiagnosis(log: log, title: title)
+            #expect(ids(d) == ["anti-cheat-online"], "\(title)")
+            #expect(d.findings[0].title.contains("Story Mode"))
+            #expect(d.findings[0].action == LogDiagnosis.Action.none)
+        }
+        // Without a title, GTA V's own programs in the log are enough.
+        #expect(ids(LogDiagnosis(log: log + "\nStarting PlayGTAV.exe")) == ["anti-cheat-online"])
+        #expect(ids(LogDiagnosis(log: log + "\n" + #"0130:fixme:ver:GetCurrentPackageId C:\\GTAV\\GTA5_Enhanced_BE.exe"#)) == ["anti-cheat-online"])
+        // Other BattlEye games, other GTAs and other anti-cheats keep the general finding.
+        for title in [nil, "PUBG: BATTLEGROUNDS", "Grand Theft Auto IV", "Grand Theft Auto: Vice City", "Grand Theft Auto Vice City"] {
+            #expect(ids(LogDiagnosis(log: log, title: title)) == ["anti-cheat"], "\(title ?? "no title")")
+        }
+        #expect(ids(LogDiagnosis(log: "Loading EasyAntiCheat_EOS.sys", title: "Grand Theft Auto V")) == ["anti-cheat"])
+    }
+
     @Test func cleanRunHasNoFindingsAndAShortExcerpt() {
         let log = (["[MaPC] Launch 2026-10-19T14:40:17Z engine=2.0.1-dxmt-test wine=11.0 environment=steam backend=dxmt"]
                    + Array(repeating: "\tVK_KHR_maintenance1 v2", count: 500)
