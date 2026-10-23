@@ -13,6 +13,8 @@ public struct LogDiagnosis: Equatable, Sendable {
         case updateEngine(from: String, to: String)
         /// The store released an update the game needs before it starts (Epic, through legendary).
         case updateGame
+        /// The game's program is .NET and the environment has no runtime: install Wine Mono (`WineMono`) into it.
+        case installDotNet
         case reportProblem
         case none
     }
@@ -125,6 +127,12 @@ public struct LogDiagnosis: Equatable, Sendable {
             add("missing-dll", "A Windows file the game needs is missing",
                 "The game looks for \(dll ?? "a DLL") and can't find it. Verifying the game's files in its store, or reinstalling it, usually brings it back.",
                 .reportProblem, e)
+        }
+        // Mafia II: Definitive Edition's launcher (Epic) is a .NET program; Wine stops it before it opens.
+        if let e = line("IL-only binary") {
+            add("needs-dotnet", "The game needs .NET",
+                "Its launcher is a .NET program, and this environment doesn't have Wine Mono, Wine's open-source .NET runtime. Installing it there lets the launcher open.",
+                .installDotNet, e)
         }
         // legendary refuses to start an Epic game the store has updated (seen with Alan Wake 2 1.2.10 -> 1.2.11).
         if let e = line("Game is out of date") {

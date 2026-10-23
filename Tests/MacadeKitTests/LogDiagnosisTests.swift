@@ -102,6 +102,19 @@ import Testing
         #expect(!EpicProvider.needsUpdate(launchOutput: "[cli] INFO: Launching 63a6..."))
     }
 
+    /// Mafia II: Definitive Edition on Epic: its launcher is .NET and the environment had no Wine Mono.
+    @Test func dotNetLauncherAsksForMono() {
+        let log = """
+        [MaPC] Launch 2026-10-23T23:14:01Z engine=1.0.1 wine=11.18 (Staging) environment=epic backend=dxvk
+        [MaPC] Exit 2026-10-23T23:14:05Z pid=23524 status=0 reason=exit
+        0024:err:module:fixup_imports_ilonly mscoree.dll not found, IL-only binary L"Launcher.exe" cannot be loaded
+        0024:err:module:loader_init Importing dlls for L"Z:\\Games\\MafiaIIDE\\pc\\Mafia2Launcher\\Launcher.exe" failed, status c0000135
+        """
+        let d = LogDiagnosis(log: log)
+        #expect(ids(d) == ["needs-dotnet"])
+        #expect(d.findings[0].action == .installDotNet)
+    }
+
     @Test func missingDLLIsNamed() {
         let log = "0124:err:module:import_dll Library d3dx9_43.dll (which is needed by L\"C:\\\\Game\\\\game.exe\") not found"
         let d = LogDiagnosis(log: log)
