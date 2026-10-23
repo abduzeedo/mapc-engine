@@ -93,6 +93,14 @@ import Testing
         #expect(d.findings[0].detail.contains("d3dx9_43.dll"))
     }
 
+    /// Default logs now keep `err:module`, and a game started in a fresh Steam writes into Steam's log.
+    @Test func steamClientMissingDLLIsNotTheGames() {
+        let helper = "0130:err:module:import_dll Library dwmapi.dll (which is needed by L\"C:\\\\Program Files (x86)\\\\Steam\\\\bin\\\\cef\\\\cef.win64\\\\steamwebhelper_real.exe\") not found"
+        #expect(ids(LogDiagnosis(log: helper)).isEmpty)
+        let game = "0124:err:module:import_dll Library d3dx9_43.dll (which is needed by L\"C:\\\\Program Files (x86)\\\\Steam\\\\steamapps\\\\common\\\\Game\\\\game.exe\") not found"
+        #expect(ids(LogDiagnosis(log: helper + "\n" + game)) == ["missing-dll"])
+    }
+
     @Test func antiCheatAndGenericCrash() {
         #expect(ids(LogDiagnosis(log: "Loading EasyAntiCheat_EOS.sys")) == ["anti-cheat"])
         let crash = "wine: Unhandled page fault on write access to 0000000000000006 at address 000000014004EC2F (thread 0598)"

@@ -117,7 +117,7 @@ public struct LogDiagnosis: Equatable, Sendable {
                 break
             }
         }
-        if let e = lines.last(where: { $0.contains("err:module:import_dll") && $0.contains("not found") }) {
+        if let e = lines.last(where: { $0.contains("err:module:import_dll") && $0.contains("not found") && !Self.isSteamClientLine($0) }) {
             let dll = e.range(of: #"Library ([^\s]+) "#, options: .regularExpression)
                 .map { String(e[$0]).replacingOccurrences(of: "Library ", with: "").trimmingCharacters(in: .whitespaces) }
             add("missing-dll", "A Windows file the game needs is missing",
@@ -166,6 +166,13 @@ public struct LogDiagnosis: Equatable, Sendable {
     }
 
     // MARK: Helpers
+
+    /// A Wine line about one of Steam's own programs (its web helper, service, overlay). A game started in a fresh
+    /// Steam shares Steam's log, so their errors aren't the game's. Games themselves live in `Steam\steamapps`.
+    static func isSteamClientLine(_ line: String) -> Bool {
+        let path = line.lowercased().replacingOccurrences(of: #"\\"#, with: #"\"#)
+        return path.contains(#"\steam\"#) && !path.contains(#"\steamapps\"#)
+    }
 
     static func trim(_ line: String) -> String {
         let t = line.trimmingCharacters(in: .whitespaces)
