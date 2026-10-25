@@ -106,6 +106,7 @@ extension EpicProvider {
         }
         do {
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let args = args
             let result = try await withThrowingTaskGroup(of: ProcessResult?.self) { group in
                 group.addTask { try await ProcessRunner.run(legendary, args, environment: environment) }
                 group.addTask { try await Task.sleep(for: Self.saveSyncTimeout); return nil }
