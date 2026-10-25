@@ -134,6 +134,12 @@ import Testing
         #expect(GraphicsBackend.dxvk.resolved(dxmtAvailable: true, gameID: "steam:208650") == .dxvk)
     }
 
+    @Test func assassinsCreedOriginsResolvesToD3DMetal() {
+        #expect(GraphicsBackend.auto.resolved(d3dMetalAvailable: true, dxmtAvailable: true, gameID: "steam:582160") == .d3dMetal)
+        #expect(GraphicsBackend.auto.resolved(d3dMetalAvailable: false, dxmtAvailable: true, gameID: "steam:582160") == .dxvk)
+        #expect(GraphicsBackend.dxmt.resolved(d3dMetalAvailable: true, gameID: "steam:582160") == .dxmt)
+    }
+
     @Test func missingDLLIsNamed() {
         let log = "0124:err:module:import_dll Library d3dx9_43.dll (which is needed by L\"C:\\\\Game\\\\game.exe\") not found"
         let d = LogDiagnosis(log: log)
