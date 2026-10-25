@@ -40,6 +40,21 @@ import Testing
         #expect(Set(pads.map(\.id)).count == pads.count)
     }
 
+    @Test func aPadSeenTwiceIsListedOnce() {
+        func pad(_ name: String, _ location: Int, _ transport: String, virtual: Bool = false) -> ControllerSupport.Connected {
+            .init(name: name, vendorID: 0x045e, productID: 0x028e, locationID: location, transport: transport, isVirtual: virtual)
+        }
+        // The report's Xbox 360 pad: a driver's copy with no transport next to the device.
+        #expect(ControllerSupport.withoutDuplicates([pad("GamePad-1", 1, ""), pad("Wireless 360 Controller", 2, "Wireless")])
+            .map(\.name) == ["Wireless 360 Controller"])
+        #expect(ControllerSupport.withoutDuplicates([pad("Virtual", 1, "USB", virtual: true), pad("Pad", 2, "USB")])
+            .map(\.name) == ["Pad"])
+        // Two real pads of the same model stay two.
+        #expect(ControllerSupport.withoutDuplicates([pad("A", 1, "USB"), pad("B", 2, "Bluetooth")]).count == 2)
+        // A pad with no transport and nothing to duplicate is kept.
+        #expect(ControllerSupport.withoutDuplicates([pad("GamePad-1", 1, "")]).count == 1)
+    }
+
     @Test func settingsWithoutControllerKeysStillLoad() throws {
         let old = #"{"onboardingCompleted":true,"verboseLogs":false,"appliedRetina":{}}"#
         let s = try JSONDecoder().decode(AppSettings.self, from: Data(old.utf8))

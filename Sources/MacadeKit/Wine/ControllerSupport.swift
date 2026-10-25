@@ -67,6 +67,8 @@ public enum ControllerSupport {
         public let productID: Int
         public let locationID: Int
         public let transport: String
+        /// Made by software (`IOHIDUserDevice`, a driver's virtual pad), not a device on a bus.
+        public var isVirtual = false
         public var kind: Kind { Kind.classify(vendorID: vendorID, productID: productID) }
         public var id: String { "\(vendorID):\(productID):\(locationID)" }
         public var idString: String { String(format: "%04X:%04X", vendorID, productID) }
@@ -94,10 +96,24 @@ public enum ControllerSupport {
                 vendorID: (property(entry, "VendorID") as? Int) ?? 0,
                 productID: (property(entry, "ProductID") as? Int) ?? 0,
                 locationID: (property(entry, "LocationID") as? Int) ?? 0,
-                transport: (property(entry, "Transport") as? String) ?? "")
+                transport: (property(entry, "Transport") as? String) ?? "",
+                isVirtual: (property(entry, "HIDVirtualDevice") as? Bool) ?? false)
             if !found.contains(where: { $0.id == device.id }) { found.append(device) }
         }
-        return found.sorted { $0.name < $1.name }
+        return withoutDuplicates(found).sorted { $0.name < $1.name }
+    }
+
+    /// One pad can show up twice: the device itself and a copy a third-party driver publishes for it (an Xbox 360
+    /// pad listed as "GamePad-1" and as "Wireless 360 Controller", same 045E:028E, different location). A virtual
+    /// entry, or one with no transport, is dropped when a real one with the same IDs is there. Two real pads of
+    /// the same model both have a transport and both stay.
+    static func withoutDuplicates(_ devices: [Connected]) -> [Connected] {
+        func isReal(_ d: Connected) -> Bool { !d.isVirtual && !d.transport.isEmpty }
+        return devices.filter { device in
+            isReal(device) || !devices.contains { other in
+                isReal(other) && other.vendorID == device.vendorID && other.productID == device.productID
+            }
+        }
     }
 }
 
