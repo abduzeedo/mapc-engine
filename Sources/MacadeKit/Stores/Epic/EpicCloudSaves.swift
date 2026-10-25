@@ -89,7 +89,8 @@ extension EpicProvider {
         let installed = try? Data(contentsOf: config.appendingPathComponent("installed.json"))
         let firstSync = installed.flatMap { EpicCloudSaves.hasSavePath(installedJSON: $0, appName: game.storeID) } == false
 
-        var args = ["sync-saves", game.storeID, "--save-path", folder.path, "-y"]
+        // `-y` is legendary's own option, so it goes before the command.
+        var args = ["-y", "sync-saves", game.storeID, "--save-path", folder.path]
         switch moment {
         case .beforePlay:
             args.append("--skip-upload")
