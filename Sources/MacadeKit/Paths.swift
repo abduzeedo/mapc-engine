@@ -29,6 +29,8 @@ public struct Paths: Sendable {
     public var gogConfig: URL { home.appendingPathComponent("gog", isDirectory: true) }
     public var libraryFile: URL { home.appendingPathComponent("Library.json") }
     public var settingsFile: URL { home.appendingPathComponent("Settings.json") }
+    /// The signed-in Steam account's owned games, cached (see `SteamOwnedGames`).
+    public var steamOwnedFile: URL { home.appendingPathComponent("SteamOwned.json") }
     /// One entry per play session (start and length), for the playtime stats.
     public var sessionsFile: URL { home.appendingPathComponent("Sessions.json") }
 
