@@ -251,3 +251,55 @@ import Testing
         }
     }
 }
+
+@Suite struct GOGInstallStateTests {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("macade-gog-\(UUID().uuidString)")
+    var gog: GOGProvider { GOGProvider(paths: Paths(home: root), gamesFolder: root.appendingPathComponent("Games")) }
+    var game: URL { gog.gamesFolder.appendingPathComponent("Game", isDirectory: true) }
+    func cleanup() { try? FileManager.default.removeItem(at: root) }
+    func write(_ text: String, to url: URL) throws {
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try text.write(to: url, atomically: true, encoding: .utf8)
+    }
+    func read(_ path: String) throws -> String { try String(contentsOf: game.appendingPathComponent(path), encoding: .utf8) }
+
+    /// Disciples II: Dark Prophecy keeps Disciple.ini only in gog-support; GOG's installer copies it into the game.
+    @Test func copiesSupportFilesWithoutOverwriting() throws {
+        defer { cleanup() }
+        let app = game.appendingPathComponent("gog-support/42/app")
+        try write("support", to: app.appendingPathComponent("Disciple.ini"))
+        try write("nested", to: app.appendingPathComponent("Sub/file.cfg"))
+        try write("support", to: app.appendingPathComponent("keep.ini"))
+        try write("user", to: game.appendingPathComponent("keep.ini"))
+        GOGProvider.copySupportFiles(id: "42", into: game)
+        #expect(try read("Disciple.ini") == "support")
+        #expect(try read("Sub/file.cfg") == "nested")
+        #expect(try read("keep.ini") == "user")
+    }
+
+    /// A manifest left after uninstall made gogdl answer "Nothing to do", so reinstalling never finished.
+    @Test func manifestIsDroppedOnlyWhenTheGameIsGone() throws {
+        defer { cleanup() }
+        let manifest = gog.manifestFile(id: "42")
+        try write("{}", to: manifest)
+        try write("{}", to: game.appendingPathComponent("goggame-42.info"))
+        gog.removeStaleManifest(id: "42")
+        #expect(FileManager.default.fileExists(atPath: manifest.path))
+
+        try FileManager.default.removeItem(at: game)
+        gog.removeStaleManifest(id: "42")
+        #expect(!FileManager.default.fileExists(atPath: manifest.path))
+    }
+
+    @Test func uninstallRemovesTheManifest() throws {
+        defer { cleanup() }
+        try write("{}", to: game.appendingPathComponent("goggame-42.info"))
+        try write("{}", to: gog.manifestFile(id: "42"))
+        var installed = GOGInstalled()
+        installed.games["42"] = .init(title: "Game", path: game)
+        try gog.saveInstalled(installed)
+        try gog.uninstall(Game(store: .gog, storeID: "42", title: "Game", isInstalled: true, installPath: game))
+        #expect(!FileManager.default.fileExists(atPath: game.path))
+        #expect(!FileManager.default.fileExists(atPath: gog.manifestFile(id: "42").path))
+    }
+}

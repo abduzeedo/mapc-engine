@@ -42,6 +42,8 @@ public struct GOGProvider: StoreProvider, Sendable {
     var authFile: URL { paths.gogConfig.appendingPathComponent("auth.json") }
     var installedFile: URL { paths.gogConfig.appendingPathComponent("installed.json") }
     var artworkFile: URL { paths.gogConfig.appendingPathComponent("artwork.json") }
+    /// gogdl's record of the installed build; it decides whether a download is a fresh install or an update.
+    func manifestFile(id: String) -> URL { paths.gogConfig.appendingPathComponent("heroic_gogdl/manifests/\(id)") }
     public var isHelperInstalled: Bool { FileManager.default.isExecutableFile(atPath: gogdl.path) }
     public var isSignedIn: Bool { FileManager.default.fileExists(atPath: authFile.path) }
 
@@ -142,6 +144,7 @@ public struct GOGProvider: StoreProvider, Sendable {
     public func install(_ game: Game, onProgress: @escaping @Sendable (Double) -> Void) async throws {
         guard isSignedIn else { throw GOGError.notSignedIn }
         try FileManager.default.createDirectory(at: gamesFolder, withIntermediateDirectories: true)
+        removeStaleManifest(id: game.storeID)
         let before = Set((try? FileManager.default.contentsOfDirectory(atPath: gamesFolder.path)) ?? [])
         let r = try await ProcessRunner.run(
             gogdl,
@@ -156,6 +159,7 @@ public struct GOGProvider: StoreProvider, Sendable {
         guard r.succeeded, let folder = findInstall(id: game.storeID, preferring: before) else {
             throw GOGError.failed("The install didn't finish. You can resume it.")
         }
+        Self.copySupportFiles(id: game.storeID, into: folder)
         var installed = loadInstalled()
         installed.games[game.storeID] = .init(title: game.title, path: folder)
         try saveInstalled(installed)
@@ -171,6 +175,8 @@ public struct GOGProvider: StoreProvider, Sendable {
             installed.games[game.storeID] = nil
             try saveInstalled(installed)
         }
+        // gogdl keeps its own record of the install; without the files it would make the next install a no-op.
+        try? FileManager.default.removeItem(at: manifestFile(id: game.storeID))
     }
 
     /// Starts the game's primary play task in the GOG environment.
@@ -193,6 +199,29 @@ public struct GOGProvider: StoreProvider, Sendable {
     }
 
     // MARK: Helpers
+
+    /// With a manifest left over from an install that is gone, gogdl treats a new download as an update of
+    /// files that aren't there ("Nothing to do") and the install never finishes. Only dropped when MaPC has
+    /// neither a record nor a folder for the game, so updates and resumed downloads keep it.
+    func removeStaleManifest(id: String) {
+        guard loadInstalled().games[id] == nil, findInstall(id: id, preferring: []) == nil else { return }
+        try? FileManager.default.removeItem(at: manifestFile(id: id))
+    }
+
+    /// GOG's installer copies `gog-support/<id>/app` into the game folder; gogdl only downloads it. Some games
+    /// keep required files only there (Disciples II: Dark Prophecy's `Disciple.ini`). Existing files are kept.
+    static func copySupportFiles(id: String, into folder: URL) {
+        let fm = FileManager.default
+        let source = folder.appendingPathComponent("gog-support/\(id)/app", isDirectory: true)
+        for relative in (try? fm.subpathsOfDirectory(atPath: source.path)) ?? [] {
+            let from = source.appendingPathComponent(relative), to = folder.appendingPathComponent(relative)
+            var isDirectory: ObjCBool = false
+            guard fm.fileExists(atPath: from.path, isDirectory: &isDirectory), !isDirectory.boolValue,
+                  !fm.fileExists(atPath: to.path) else { continue }
+            try? fm.createDirectory(at: to.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? fm.copyItem(at: from, to: to)
+        }
+    }
 
     /// The folder holding `goggame-<id>.info`; a newly created folder wins when several match.
     func findInstall(id: String, preferring before: Set<String>) -> URL? {
