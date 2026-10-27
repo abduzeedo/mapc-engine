@@ -61,7 +61,8 @@ private func write(_ text: String, to url: URL, modified: Date? = nil) throws {
         let sessions = [session("steam:1", daysAgo: 1, hours: 2), session("steam:1", daysAgo: 15, hours: 3)]
         let weeks = PlaytimeStats.weekly(sessions: sessions, weeks: 4, now: now, calendar: calendar)
         #expect(weeks.count == 4)
-        #expect(weeks.map(\.seconds) == [0, 3 * 3600, 0, 2 * 3600])
+        let expected: [TimeInterval] = [0, 3 * 3600, 0, 2 * 3600]
+        #expect(weeks.map(\.seconds) == expected)
         #expect(weeks[0].weekStart < weeks[3].weekStart)
     }
 
