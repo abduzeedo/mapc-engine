@@ -15,7 +15,12 @@ public struct DiscoverItem: Codable, Hashable, Sendable, Identifiable {
     public var coverURL: URL?
     public var headerURL: URL?
     public var heroURL: URL?
+    /// Transparent title art, laid over the hero.
+    public var logoURL: URL?
     public var macNative = false
+    /// Needs a VR headset, which macOS can't drive.
+    public var vrOnly = false
+    public var isDemo = false
     public var deck: DeckRating?
     /// Prices as the store formats them for the user's country.
     public var price: String?
@@ -42,11 +47,13 @@ public struct DiscoverItem: Codable, Hashable, Sendable, Identifiable {
 /// One strip of games on the Discover page.
 public struct DiscoverRow: Codable, Hashable, Sendable, Identifiable {
     public enum Kind: String, Codable, Sendable, CaseIterable {
-        case recommended, newReleases, topSellers, specials, comingSoon
+        case recommended, freeToTry, demos, newReleases, topSellers, specials, comingSoon
 
         public var title: String {
             switch self {
             case .recommended: "Recommended for You"
+            case .freeToTry: "Free Games to Try"
+            case .demos: "Demos to Try"
             case .newReleases: "New and Trending"
             case .topSellers: "Top Sellers"
             case .specials: "On Sale"
@@ -86,6 +93,7 @@ public enum SteamDiscover {
     static let queueURL = "https://api.steampowered.com/IStoreService/GetDiscoveryQueue/v1/"
     static let itemsURL = "https://api.steampowered.com/IStoreBrowseService/GetItems/v1/"
     static let assetBase = "https://shared.akamai.steamstatic.com/store_item_assets/"
+    static let searchURL = "https://store.steampowered.com/search/results/"
 
     /// Games shown per row.
     static let rowLength = 20
@@ -96,8 +104,12 @@ public enum SteamDiscover {
     public static func fetch(accessToken: String?, country: String, session: URLSession = .shared) async throws -> DiscoverFeed {
         async let featured = try? featuredIDs(country: country, session: session)
         async let queue = signedInQueue(accessToken: accessToken, country: country, session: session)
+        async let free = try? searchIDs(.freeToTry, country: country, session: session)
+        async let demos = try? searchIDs(.demos, country: country, session: session)
         var ids: [DiscoverRow.Kind: [String]] = await featured ?? [:]
         if let recommended = await queue, !recommended.isEmpty { ids[.recommended] = recommended }
+        if let free = await free, !free.isEmpty { ids[.freeToTry] = free }
+        if let demos = await demos, !demos.isEmpty { ids[.demos] = demos }
         guard !ids.isEmpty else { throw URLError(.cannotConnectToHost) }
 
         let all = Array(Set(ids.values.joined()))
@@ -144,6 +156,45 @@ public enum SteamDiscover {
             if !ids.isEmpty { result[kind] = ids }
         }
         return result
+    }
+
+    // MARK: Store search
+
+    /// Free games and demos that Steam Deck rates Verified, most popular first. Deck plays Windows games through
+    /// Wine too, so these are the safest picks for someone trying MaPC for the first time.
+    static func searchURL(_ kind: DiscoverRow.Kind, country: String) -> URL {
+        var c = URLComponents(string: searchURL)!
+        var items: [URLQueryItem] = [
+            .init(name: "query", value: ""), .init(name: "start", value: "0"), .init(name: "count", value: "50"),
+            .init(name: "infinite", value: "1"), .init(name: "deck_compatibility", value: "3"),
+            .init(name: "filter", value: "topsellers"), .init(name: "cc", value: country), .init(name: "l", value: "english"),
+        ]
+        switch kind {
+        case .demos: items.append(.init(name: "category1", value: "10"))
+        default: items += [.init(name: "category1", value: "998"), .init(name: "maxprice", value: "free")]
+        }
+        c.queryItems = items
+        return c.url!
+    }
+
+    static func searchIDs(_ kind: DiscoverRow.Kind, country: String, session: URLSession) async throws -> [String] {
+        let (data, response) = try await session.data(for: URLRequest(url: searchURL(kind, country: country), timeoutInterval: 20))
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
+        return try parseSearch(data)
+    }
+
+    /// App IDs from a store search page (`infinite=1` answers JSON with the rows as HTML). Bundles carry
+    /// several IDs in one attribute and are skipped.
+    static func parseSearch(_ data: Data) throws -> [String] {
+        guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let html = root["results_html"] as? String else { throw URLError(.cannotParseResponse) }
+        let pattern = try NSRegularExpression(pattern: #"data-ds-appid="(\d+)""#)
+        var seen = Set<String>()
+        return pattern.matches(in: html, range: NSRange(html.startIndex..., in: html)).compactMap { match in
+            guard let range = Range(match.range(at: 1), in: html) else { return nil }
+            let id = String(html[range])
+            return seen.insert(id).inserted ? id : nil
+        }
     }
 
     // MARK: Discovery queue
@@ -206,8 +257,8 @@ public enum SteamDiscover {
         return result
     }
 
-    /// Games from a GetItems answer. Hidden items, failed lookups and anything that isn't a game (DLC,
-    /// software, soundtracks: Steam's `type` other than 0) are left out.
+    /// Games and demos from a GetItems answer. Hidden items, failed lookups and anything else (DLC, software,
+    /// soundtracks: Steam's `type` other than 0 or 1) are left out.
     static func parseItems(_ data: Data) throws -> [DiscoverItem] {
         guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               let response = root["response"] as? [String: Any] else { throw URLError(.cannotParseResponse) }
@@ -217,9 +268,10 @@ public enum SteamDiscover {
     static func parseItem(_ item: [String: Any]) -> DiscoverItem? {
         guard let id = intValue(item["appid"]) ?? intValue(item["id"]),
               intValue(item["success"]) ?? 1 == 1, item["visible"] as? Bool ?? true,
-              intValue(item["type"]) ?? 0 == 0,
+              [0, 1].contains(intValue(item["type"]) ?? 0),
               let name = (item["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else { return nil }
         var result = DiscoverItem(store: .steam, storeID: String(id), title: name)
+        result.isDemo = intValue(item["type"]) == 1
 
         if let assets = item["assets"] as? [String: Any], let format = assets["asset_url_format"] as? String,
            format.contains("${FILENAME}") {
@@ -230,6 +282,7 @@ public enum SteamDiscover {
             result.coverURL = url("library_capsule_2x") ?? url("library_capsule")
             result.headerURL = url("header") ?? url("main_capsule")
             result.heroURL = url("library_hero") ?? url("page_background")
+            result.logoURL = url("library_logo_2x") ?? url("library_logo")
         }
         // Older games have no library art in GetItems; Steam still serves it at the plain path.
         if result.coverURL == nil { result.coverURL = SteamLibrary.artworkURL(appID: result.storeID, "library_600x900.jpg") }
@@ -238,6 +291,8 @@ public enum SteamDiscover {
         if let platforms = item["platforms"] as? [String: Any] {
             result.macNative = platforms["mac"] as? Bool ?? false
             result.deck = intValue(platforms["steam_deck_compat_category"]).flatMap(DiscoverItem.DeckRating.init)
+            let vr = platforms["vr_support"] as? [String: Any] ?? [:]
+            result.vrOnly = vr["vrhmd_only"] as? Bool ?? vr["vr_only"] as? Bool ?? false
         }
         if let release = item["release"] as? [String: Any] {
             if let seconds = intValue(release["steam_release_date"]) ?? intValue(release["original_release_date"]), seconds > 0 {

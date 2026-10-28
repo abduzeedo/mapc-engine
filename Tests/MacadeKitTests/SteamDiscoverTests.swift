@@ -71,10 +71,13 @@ import Testing
         [{"name":"A","status":"Denied","anticheats":["BattlEye"],"storeIds":{"steam":"100"}},
          {"name":"B","status":"Supported","anticheats":["Easy Anti-Cheat"],"storeIds":{"steam":"200"}},
          {"name":"C","status":"Broken","anticheats":[],"storeIds":{"epic":{"namespace":"x","slug":"c"}}},
-         {"name":"D","status":"Broken","anticheats":["Vanguard"],"storeIds":{"steam":"300"}}]
+         {"name":"D","status":"Broken","anticheats":["Vanguard"],"storeIds":{"steam":"300"}},
+         {"name":"E","status":"Running","anticheats":["Valve Anti-Cheat"],"storeIds":{"steam":"400"}},
+         {"name":"F","status":"Running","anticheats":[],"storeIds":{"steam":"500"}}]
         """#
         let list = try AntiCheatList.parse(Data(json.utf8))
-        #expect(Set(list.keys) == ["100", "300"])
+        // Proton's "Supported" relies on a Linux runtime, so on a Mac it still blocks; VAC alone doesn't.
+        #expect(Set(list.keys) == ["100", "200", "300"])
         #expect(list["100"] == .init(status: "Denied", anticheats: ["BattlEye"]))
     }
 
@@ -88,8 +91,36 @@ import Testing
         #expect(DiscoverVerdict.make(for: item)?.level == .macVersion)
         item.macNative = false
         #expect(DiscoverVerdict.make(for: item)?.level == .likely)
-        item.deck = .unsupported
+        item.deck = .unknown
         #expect(DiscoverVerdict.make(for: item) == nil)
+        item.deck = .unsupported
+        #expect(DiscoverVerdict.make(for: item)?.level == .wontRun)
+        item.deck = .verified
+        item.vrOnly = true
+        #expect(DiscoverVerdict.make(for: item)?.level == .wontRun)
+    }
+
+    @Test func searchFindsAppIDs() throws {
+        let html = #"<a href="https://store.steampowered.com/app/570/Dota_2/" data-ds-appid="570" data-ds-itemkey="App_570"></a><a data-ds-appid="730"></a><a data-ds-bundleid="1" data-ds-appid="1,2"></a><a data-ds-appid="570"></a>"#
+        let json = try JSONSerialization.data(withJSONObject: ["success": 1, "results_html": html, "total_count": 3] as [String: Any])
+        #expect(try SteamDiscover.parseSearch(json) == ["570", "730"])
+        let url = SteamDiscover.searchURL(.demos, country: "US")
+        let items = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems)
+        #expect(items.contains(URLQueryItem(name: "category1", value: "10")))
+        #expect(items.contains(URLQueryItem(name: "deck_compatibility", value: "3")))
+    }
+
+    @Test func parsesDemosVRAndLogos() throws {
+        let json = #"""
+        {"response":{"store_items":[
+          {"id":7,"success":1,"visible":true,"name":"A Demo","appid":7,"type":1,
+           "assets":{"asset_url_format":"steam/apps/7/h/${FILENAME}","library_logo":"logo.png"},
+           "platforms":{"windows":true,"vr_support":{"vrhmd":true,"vrhmd_only":true}}}
+        ]}}
+        """#
+        let item = try #require(try SteamDiscover.parseItems(Data(json.utf8)).first)
+        #expect(item.isDemo && item.vrOnly)
+        #expect(item.logoURL?.absoluteString == "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/7/h/logo.png")
     }
 
     @Test func feedCacheRoundTrip() throws {

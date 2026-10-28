@@ -1,10 +1,13 @@
 import Foundation
 
-/// Games whose anti-cheat is known not to run under Wine, from the community-kept list at
-/// areweanticheatyet.com (MIT licensed). Only the Steam entries marked Denied or Broken are kept.
+/// Games with anti-cheat, from the community-kept list at areweanticheatyet.com (MIT licensed).
+///
+/// That list is about Proton on Linux. Its "Supported" and "Running" mean the developer turned on Easy Anti-Cheat's
+/// or BattlEye's Linux runtime, which is a Linux library a Mac can't load, so on a Mac every entry counts as
+/// blocked except those whose only anti-cheat is Valve's (VAC runs on Steam's servers, not in the game).
 public enum AntiCheatList {
     public struct Entry: Codable, Equatable, Sendable {
-        /// "Denied" (the developer turned it off for Wine/Proton) or "Broken".
+        /// The list's status for Proton: "Supported", "Running", "Planned", "Broken" or "Denied".
         public var status: String
         public var anticheats: [String]
 
@@ -28,7 +31,10 @@ public enum AntiCheatList {
     public static let sourceURL = URL(string: "https://raw.githubusercontent.com/AreWeAntiCheatYet/AreWeAntiCheatYet/HEAD/games.json")!
     public static let maxAge: TimeInterval = 24 * 3600
 
-    static let blockingStatuses: Set<String> = ["Denied", "Broken"]
+    /// Anti-cheat that doesn't stop a game from running under Wine on a Mac.
+    static func isHarmless(_ anticheat: String) -> Bool {
+        anticheat.localizedCaseInsensitiveContains("valve") || anticheat.localizedCaseInsensitiveContains("VAC")
+    }
 
     static func parse(_ data: Data) throws -> [String: Entry] {
         guard let games = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
@@ -36,10 +42,11 @@ public enum AntiCheatList {
         }
         var result: [String: Entry] = [:]
         for game in games {
-            guard let status = game["status"] as? String, blockingStatuses.contains(status),
+            let anticheats = game["anticheats"] as? [String] ?? []
+            guard let status = game["status"] as? String, !anticheats.allSatisfy(isHarmless),
                   let ids = game["storeIds"] as? [String: Any],
                   let appID = SteamDiscover.intValue(ids["steam"]) else { continue }
-            result[String(appID)] = Entry(status: status, anticheats: game["anticheats"] as? [String] ?? [])
+            result[String(appID)] = Entry(status: status, anticheats: anticheats)
         }
         return result
     }
@@ -72,7 +79,7 @@ public struct DiscoverVerdict: Codable, Hashable, Sendable {
         case macVersion
         /// Signals point to it running (Steam Deck rating).
         case likely
-        /// Known not to run (anti-cheat, MaPC's own notes).
+        /// Known not to run (anti-cheat, VR, Steam Deck "Unsupported", MaPC's own notes).
         case wontRun
     }
 
@@ -86,9 +93,10 @@ public struct DiscoverVerdict: Codable, Hashable, Sendable {
         self.reason = reason
     }
 
-    /// MaPC's own notes first, then anti-cheat, then a Mac version, then the Steam Deck rating. Nil when
+    /// MaPC's own notes first, then anti-cheat and VR, then a Mac version, then the Steam Deck rating. Nil when
     /// nothing is known: no badge is better than a guess. A Deck rating alone never claims more than "likely":
-    /// Deck runs Proton on Linux, not Wine on Apple silicon.
+    /// Deck runs Proton on Linux, not Wine on Apple silicon. Its "Unsupported" is a strong "no" though: Valve
+    /// gives it for the same things that stop MaPC (anti-cheat, VR, launchers Wine can't run).
     public static func make(for item: DiscoverItem, antiCheat: [String: AntiCheatList.Entry] = [:],
                             knownIssues: [String: String] = KnownIssues.builtIn) -> DiscoverVerdict? {
         if let note = knownIssues[item.id] {
@@ -97,7 +105,10 @@ public struct DiscoverVerdict: Codable, Hashable, Sendable {
         if item.store == .steam, let entry = antiCheat[item.storeID] {
             let names = entry.anticheats.isEmpty ? "anti-cheat" : ListFormatter.localizedString(byJoining: entry.anticheats)
             return DiscoverVerdict(level: .wontRun, label: "Won't run",
-                                   reason: "It uses \(names), which blocks Windows compatibility layers like the one MaPC uses.")
+                                   reason: "It uses \(names), which needs a real Windows PC and blocks compatibility layers like the one MaPC uses.")
+        }
+        if item.vrOnly {
+            return DiscoverVerdict(level: .wontRun, label: "Won't run", reason: "It needs a VR headset, which macOS doesn't support.")
         }
         if item.macNative {
             return DiscoverVerdict(level: .macVersion, label: "Mac version",
@@ -108,6 +119,9 @@ public struct DiscoverVerdict: Codable, Hashable, Sendable {
             let rating = item.deck == .verified ? "Verified" : "Playable"
             return DiscoverVerdict(level: .likely, label: "Likely to run",
                                    reason: "Steam Deck rates it \(rating). Deck plays Windows games through Wine too, so it's a good sign, though not a promise for Mac.")
+        case .unsupported?:
+            return DiscoverVerdict(level: .wontRun, label: "Won't run",
+                                   reason: "Steam Deck marks it Unsupported, usually because of anti-cheat, VR or a launcher that doesn't run outside Windows.")
         default:
             return nil
         }
