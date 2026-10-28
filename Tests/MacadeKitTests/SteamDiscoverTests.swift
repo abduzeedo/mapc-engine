@@ -38,11 +38,17 @@ import Testing
           {"id":2,"success":1,"visible":true,"name":"Some DLC","appid":2,"type":4},
           {"id":3,"success":2,"appid":3},
           {"id":4,"success":1,"visible":true,"name":"Next Year","appid":4,"type":0,
-           "release":{"is_coming_soon":true,"coming_soon_display":"Q1 2027"},"platforms":{"windows":true}}
+           "release":{"is_coming_soon":true,"custom_release_date_message":"Q1 2027","coming_soon_display":"text_comingsoon"},"platforms":{"windows":true}},
+          {"id":5,"success":1,"visible":true,"name":"Next Week","appid":5,"type":0,
+           "release":{"steam_release_date":1793224800,"is_coming_soon":true,"coming_soon_display":"date_full"}},
+          {"id":6,"success":1,"visible":true,"name":"Someday","appid":6,"type":0,
+           "release":{"is_coming_soon":true,"coming_soon_display":"text_comingsoon"}},
+          {"id":7,"success":1,"visible":true,"name":"Late 2026","appid":7,"type":0,
+           "release":{"steam_release_date":1793224800,"is_coming_soon":true,"coming_soon_display":"date_quarter"}}
         ]}}
         """#
         let items = try SteamDiscover.parseItems(Data(json.utf8))
-        #expect(items.map(\.storeID) == ["1145360", "4"])
+        #expect(items.map(\.storeID) == ["1145360", "4", "5", "6", "7"])
         let hades = items[0]
         #expect(hades.title == "Hades")
         #expect(hades.coverURL?.absoluteString == "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1145360/abc/library_600x900.jpg?t=1")
@@ -55,6 +61,9 @@ import Testing
         #expect(next.comingSoon == "Q1 2027")
         #expect(!next.macNative && next.deck == nil && next.price == nil)
         #expect(next.coverURL == SteamLibrary.artworkURL(appID: "4", "library_600x900.jpg"))
+        #expect(items[2].comingSoon == "Oct 28, 2026")
+        #expect(items[3].comingSoon == "Coming soon")
+        #expect(items[4].comingSoon == "Q4 2026")
     }
 
     @Test func antiCheatKeepsOnlyBlockedSteamGames() throws {

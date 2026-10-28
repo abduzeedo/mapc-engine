@@ -244,7 +244,7 @@ public enum SteamDiscover {
                 result.releaseDate = Date(timeIntervalSince1970: TimeInterval(seconds))
             }
             if release["is_coming_soon"] as? Bool == true {
-                result.comingSoon = (release["coming_soon_display"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "Coming soon"
+                result.comingSoon = comingSoonText(release, date: result.releaseDate)
             }
         }
         if let info = item["basic_info"] as? [String: Any], let summary = info["short_description"] as? String, !summary.isEmpty {
@@ -259,6 +259,30 @@ public enum SteamDiscover {
             if result.discountPercent != nil { result.originalPrice = purchase["formatted_original_price"] as? String }
         }
         return result
+    }
+
+    /// When an unreleased game comes out, as the store page words it. `coming_soon_display` is a format token
+    /// (`date_full`, `date_month`, `date_quarter`, `date_year`, `text_comingsoon`), not text; the text itself, when the
+    /// developer wrote one, is `custom_release_date_message`.
+    static func comingSoonText(_ release: [String: Any], date: Date?) -> String {
+        if let message = (release["custom_release_date_message"] as? String)?.trimmingCharacters(in: .whitespaces), !message.isEmpty {
+            return message
+        }
+        guard let date else { return "Coming soon" }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        let parts = calendar.dateComponents([.year, .month], from: date)
+        let year = parts.year ?? 0, month = parts.month ?? 1
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = calendar.timeZone
+        switch release["coming_soon_display"] as? String {
+        case "date_year": return String(year)
+        case "date_quarter": return "Q\((month - 1) / 3 + 1) \(year)"
+        case "date_month": formatter.dateFormat = "MMMM yyyy"
+        default: formatter.dateFormat = "MMM d, yyyy"
+        }
+        return formatter.string(from: date)
     }
 
     /// Steam sends 64-bit numbers as strings in some answers.
