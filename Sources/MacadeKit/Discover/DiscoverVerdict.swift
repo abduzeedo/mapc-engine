@@ -107,6 +107,10 @@ public struct DiscoverVerdict: Codable, Hashable, Sendable {
             return DiscoverVerdict(level: .wontRun, label: "Won't run",
                                    reason: "It uses \(names), which needs a real Windows PC and blocks compatibility layers like the one MaPC uses.")
         }
+        if let names = item.kernelAntiCheat, !names.isEmpty {
+            return DiscoverVerdict(level: .wontRun, label: "Won't run",
+                                   reason: "It uses \(ListFormatter.localizedString(byJoining: names)), kernel-level anti-cheat that needs a real Windows PC and blocks compatibility layers like the one MaPC uses.")
+        }
         if item.vrOnly {
             return DiscoverVerdict(level: .wontRun, label: "Won't run", reason: "It needs a VR headset, which macOS doesn't support.")
         }

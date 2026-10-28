@@ -108,6 +108,28 @@ import Testing
         let items = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems)
         #expect(items.contains(URLQueryItem(name: "category1", value: "10")))
         #expect(items.contains(URLQueryItem(name: "deck_compatibility", value: "3")))
+        // The top sellers sort leaves out free items, which every demo is.
+        #expect(!items.contains { $0.name == "filter" })
+        let free = try #require(URLComponents(url: SteamDiscover.searchURL(.freeToTry, country: "US"), resolvingAgainstBaseURL: false)?.queryItems)
+        #expect(free.contains(URLQueryItem(name: "filter", value: "topsellers")))
+        #expect(free.contains(URLQueryItem(name: "maxprice", value: "free")))
+    }
+
+    @Test func storePageAntiCheatNotice() {
+        let page = """
+        <div class="anticheat_section DRM_notice" >
+            <div>Uses Kernel Level Anti-Cheat</div>
+            <div class="anticheat_name">RICOCHET Anti-Cheat<span class="anticheat_uninstalls"></span></div>
+            <div class="anticheat_name">Boot Protection<span class="anticheat_uninstalls"> - Requires both Secure Boot & TPM 2.0</span></div>
+        </div>
+        """
+        #expect(SteamDiscover.parseAntiCheatNotice(page) == ["RICOCHET Anti-Cheat"])
+        #expect(SteamDiscover.parseAntiCheatNotice("<div class=\"game_area_description\">Hades</div>").isEmpty)
+        var item = DiscoverItem(store: .steam, storeID: "1", title: "A")
+        item.kernelAntiCheat = ["RICOCHET Anti-Cheat"]
+        #expect(DiscoverVerdict.make(for: item)?.level == .wontRun)
+        item.kernelAntiCheat = []
+        #expect(DiscoverVerdict.make(for: item) == nil)
     }
 
     @Test func parsesDemosVRAndLogos() throws {
@@ -121,6 +143,9 @@ import Testing
         let item = try #require(try SteamDiscover.parseItems(Data(json.utf8)).first)
         #expect(item.isDemo && item.vrOnly)
         #expect(item.logoURL?.absoluteString == "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/7/h/logo.png")
+        // GetItems usually lists no logo: the plain path, which older games have.
+        let bare = try #require(try SteamDiscover.parseItems(Data(#"{"response":{"store_items":[{"appid":8,"name":"B","type":0}]}}"#.utf8)).first)
+        #expect(bare.logoURL == SteamLibrary.artworkURL(appID: "8", "logo.png"))
     }
 
     @Test func feedCacheRoundTrip() throws {

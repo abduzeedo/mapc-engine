@@ -21,6 +21,8 @@ public struct DiscoverItem: Codable, Hashable, Sendable, Identifiable {
     /// Needs a VR headset, which macOS can't drive.
     public var vrOnly = false
     public var isDemo = false
+    /// Kernel-level anti-cheat the store page discloses ("RICOCHET Anti-Cheat"). Nil when the page wasn't read.
+    public var kernelAntiCheat: [String]?
     public var deck: DeckRating?
     /// Prices as the store formats them for the user's country.
     public var price: String?
@@ -97,6 +99,8 @@ public enum SteamDiscover {
 
     /// Games shown per row.
     static let rowLength = 20
+    /// Store pages read per refresh for the anti-cheat notice; each is about 200 KB.
+    static let storePageChecks = 24
 
     // MARK: Feed
 
@@ -113,7 +117,8 @@ public enum SteamDiscover {
         guard !ids.isEmpty else { throw URLError(.cannotConnectToHost) }
 
         let all = Array(Set(ids.values.joined()))
-        let details = (try? await items(appIDs: all, country: country, session: session)) ?? [:]
+        var details = (try? await items(appIDs: all, country: country, session: session)) ?? [:]
+        await addAntiCheatNotices(&details, ids: ids, session: session)
         let rows = DiscoverRow.Kind.allCases.compactMap { kind -> DiscoverRow? in
             let items = (ids[kind] ?? []).compactMap { details[$0] }
             return items.isEmpty ? nil : DiscoverRow(kind: kind, items: Array(items.prefix(rowLength)))
@@ -167,11 +172,13 @@ public enum SteamDiscover {
         var items: [URLQueryItem] = [
             .init(name: "query", value: ""), .init(name: "start", value: "0"), .init(name: "count", value: "50"),
             .init(name: "infinite", value: "1"), .init(name: "deck_compatibility", value: "3"),
-            .init(name: "filter", value: "topsellers"), .init(name: "cc", value: country), .init(name: "l", value: "english"),
+            .init(name: "cc", value: country), .init(name: "l", value: "english"),
         ]
         switch kind {
+        // The top sellers sort leaves out free items, so demos keep the store's default order.
         case .demos: items.append(.init(name: "category1", value: "10"))
-        default: items += [.init(name: "category1", value: "998"), .init(name: "maxprice", value: "free")]
+        default: items += [.init(name: "category1", value: "998"), .init(name: "maxprice", value: "free"),
+                           .init(name: "filter", value: "topsellers")]
         }
         c.queryItems = items
         return c.url!
@@ -195,6 +202,51 @@ public enum SteamDiscover {
             let id = String(html[range])
             return seen.insert(id).inserted ? id : nil
         }
+    }
+
+    // MARK: Anti-cheat notices
+
+    /// Steam requires store pages to say when a game uses kernel-level anti-cheat. Read for the first games of
+    /// each row that have no Mac version and no Steam Deck rating (a new Call of Duty, say): the others are
+    /// covered by Deck's rating or don't need Wine. A page that can't be read just leaves no note.
+    static func addAntiCheatNotices(_ details: inout [String: DiscoverItem], ids: [DiscoverRow.Kind: [String]],
+                                    session: URLSession) async {
+        var seen = Set<String>()
+        let unrated = DiscoverRow.Kind.allCases.flatMap { (ids[$0] ?? []).prefix(10) }.filter { id in
+            guard let item = details[id], !item.macNative, !item.vrOnly, item.deck == nil || item.deck == .unknown else { return false }
+            return seen.insert(id).inserted
+        }.prefix(storePageChecks)
+        let width = 6
+        let ids = Array(unrated)
+        for start in stride(from: 0, to: ids.count, by: width) {
+            await withTaskGroup(of: (String, [String]?).self) { group in
+                for id in ids[start..<min(start + width, ids.count)] {
+                    group.addTask { (id, try? await kernelAntiCheat(appID: id, session: session)) }
+                }
+                for await (id, names) in group { if let names { details[id]?.kernelAntiCheat = names } }
+            }
+        }
+    }
+
+    static func kernelAntiCheat(appID: String, session: URLSession) async throws -> [String] {
+        var request = URLRequest(url: URL(string: "https://store.steampowered.com/app/\(appID)/?l=english")!, timeoutInterval: 20)
+        // Past the age gate, which would otherwise answer instead of the page.
+        request.setValue("birthtime=0; lastagecheckage=1-0-1990; wants_mature_content=1", forHTTPHeaderField: "Cookie")
+        let (data, response) = try await session.data(for: request)
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
+        return parseAntiCheatNotice(String(decoding: data, as: UTF8.self))
+    }
+
+    /// The anti-cheat names from a store page's kernel-level anti-cheat notice; empty when there's none.
+    static func parseAntiCheatNotice(_ html: String) -> [String] {
+        guard let start = html.range(of: "anticheat_section") else { return [] }
+        let section = String(html[start.upperBound...].prefix(2000))
+        guard section.range(of: "Kernel Level", options: .caseInsensitive) != nil else { return [] }
+        let pattern = try! NSRegularExpression(pattern: #"class="anticheat_name">([^<]+)"#)
+        let names = pattern.matches(in: section, range: NSRange(section.startIndex..., in: section)).compactMap {
+            Range($0.range(at: 1), in: section).map { section[$0].trimmingCharacters(in: .whitespacesAndNewlines) }
+        }.filter { !$0.isEmpty && $0 != "Boot Protection" }
+        return names.isEmpty ? ["kernel-level anti-cheat"] : names
     }
 
     // MARK: Discovery queue
@@ -287,6 +339,8 @@ public enum SteamDiscover {
         // Older games have no library art in GetItems; Steam still serves it at the plain path.
         if result.coverURL == nil { result.coverURL = SteamLibrary.artworkURL(appID: result.storeID, "library_600x900.jpg") }
         if result.headerURL == nil { result.headerURL = SteamLibrary.artworkURL(appID: result.storeID, "header.jpg") }
+        // GetItems doesn't list the logo; older games still have one at the plain path (newer ones fall back to the title).
+        if result.logoURL == nil { result.logoURL = SteamLibrary.artworkURL(appID: result.storeID, "logo.png") }
 
         if let platforms = item["platforms"] as? [String: Any] {
             result.macNative = platforms["mac"] as? Bool ?? false
