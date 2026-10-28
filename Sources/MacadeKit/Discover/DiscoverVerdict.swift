@@ -93,7 +93,7 @@ public struct DiscoverVerdict: Codable, Hashable, Sendable {
         self.reason = reason
     }
 
-    /// MaPC's own notes first, then anti-cheat and VR, then a Mac version, then the Steam Deck rating. Nil when
+    /// MaPC's own notes first, then VR, then a Mac version, then anti-cheat, then the Steam Deck rating. Nil when
     /// nothing is known: no badge is better than a guess. A Deck rating alone never claims more than "likely":
     /// Deck runs Proton on Linux, not Wine on Apple silicon. Its "Unsupported" is a strong "no" though: Valve
     /// gives it for the same things that stop MaPC (anti-cheat, VR, launchers Wine can't run).
@@ -101,6 +101,14 @@ public struct DiscoverVerdict: Codable, Hashable, Sendable {
                             knownIssues: [String: String] = KnownIssues.builtIn) -> DiscoverVerdict? {
         if let note = knownIssues[item.id] {
             return DiscoverVerdict(level: .wontRun, label: "Won't run", reason: note)
+        }
+        if item.vrOnly {
+            return DiscoverVerdict(level: .wontRun, label: "Won't run", reason: "It needs a VR headset, which macOS doesn't support.")
+        }
+        // A Mac version doesn't go through Wine, so anti-cheat and Deck's rating don't apply to it.
+        if item.macNative {
+            return DiscoverVerdict(level: .macVersion, label: "Mac version",
+                                   reason: "This game also has a Mac version you can download from the store.")
         }
         if item.store == .steam, let entry = antiCheat[item.storeID] {
             let names = entry.anticheats.isEmpty ? "anti-cheat" : ListFormatter.localizedString(byJoining: entry.anticheats)
@@ -110,13 +118,6 @@ public struct DiscoverVerdict: Codable, Hashable, Sendable {
         if let names = item.kernelAntiCheat, !names.isEmpty {
             return DiscoverVerdict(level: .wontRun, label: "Won't run",
                                    reason: "It uses \(ListFormatter.localizedString(byJoining: names)), kernel-level anti-cheat that needs a real Windows PC and blocks compatibility layers like the one MaPC uses.")
-        }
-        if item.vrOnly {
-            return DiscoverVerdict(level: .wontRun, label: "Won't run", reason: "It needs a VR headset, which macOS doesn't support.")
-        }
-        if item.macNative {
-            return DiscoverVerdict(level: .macVersion, label: "Mac version",
-                                   reason: "This game also has a Mac version you can download from the store.")
         }
         switch item.deck {
         case .verified?, .playable?:

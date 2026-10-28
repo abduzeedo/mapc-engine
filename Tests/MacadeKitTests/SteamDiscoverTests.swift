@@ -86,10 +86,12 @@ import Testing
         item.macNative = true
         item.deck = .verified
         let blocked = ["100": AntiCheatList.Entry(status: "Denied", anticheats: ["BattlEye"])]
-        #expect(DiscoverVerdict.make(for: item, antiCheat: blocked)?.level == .wontRun)
+        // The Mac version runs without Wine, so its Windows anti-cheat doesn't matter (Warframe, say).
+        #expect(DiscoverVerdict.make(for: item, antiCheat: blocked)?.level == .macVersion)
         #expect(DiscoverVerdict.make(for: item, knownIssues: ["steam:100": "No."])?.reason == "No.")
         #expect(DiscoverVerdict.make(for: item)?.level == .macVersion)
         item.macNative = false
+        #expect(DiscoverVerdict.make(for: item, antiCheat: blocked)?.level == .wontRun)
         #expect(DiscoverVerdict.make(for: item)?.level == .likely)
         item.deck = .unknown
         #expect(DiscoverVerdict.make(for: item) == nil)
