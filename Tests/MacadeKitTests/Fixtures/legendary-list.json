@@ -3,5 +3,7 @@
     {"type":"DieselGameBox","url":"https://cdn.example/wide.jpg"},
     {"type":"DieselGameBoxTall","url":"https://cdn.example/tall.jpg"}]}},
   {"app_name":"def456","app_title":"alpha Game","metadata":{"keyImages":[]}},
-  {"app_name":"ghi789","app_title":"No Metadata"}
+  {"app_name":"ghi789","app_title":"No Metadata"},
+  {"app_name":"fab001","app_title":"Advanced Cel Shader Lite","metadata":{"categories":[
+    {"path":"asset-format"},{"path":"asset-format/game-engine/unreal-engine"},{"path":"type/format-item"}]}}
 ]

@@ -4,11 +4,16 @@ import Foundation
 struct LegendaryListEntry: Decodable {
     struct Metadata: Decodable {
         struct KeyImage: Decodable { let type: String; let url: String }
+        struct Category: Decodable { let path: String? }
         let keyImages: [KeyImage]?
+        let categories: [Category]?
     }
     let app_name: String
     let app_title: String
     let metadata: Metadata?
+
+    /// Unreal Engine content from Fab (materials, plugins, sample projects) is listed with the games.
+    var isEngineAsset: Bool { metadata?.categories?.contains { $0.path == "asset-format" } == true }
 }
 
 struct LegendaryInstalledEntry: Decodable {
@@ -30,7 +35,7 @@ public enum LegendaryParser {
             for t in types { if let u = e.metadata?.keyImages?.first(where: { $0.type == t })?.url { return URL(string: u) } }
             return nil
         }
-        return owned.map { e in
+        return owned.filter { !$0.isEngineAsset }.map { e in
             let inst = installed[e.app_name]
             return Game(
                 store: .epic, storeID: e.app_name, title: e.app_title, isInstalled: inst != nil,
