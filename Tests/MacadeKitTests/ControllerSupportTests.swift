@@ -25,6 +25,33 @@ import Testing
         #expect(off.allSatisfy { $0.prefix(2) == ["reg", "delete"] && $0.last == "/f" })
     }
 
+    @Test func mappingsGoUnderWinebusMapOnePerGUID() throws {
+        let commands = ControllerSupport.mappingCommands()
+        #expect(commands.count == ControllerSupport.sdlMappings.flatMap(\.guids).count)
+        let usb = try #require(commands.first { $0[4] == "03000000c82d00001260000001000000" })
+        #expect(Array(usb.prefix(8)) == ["reg", "add", #"HKLM\System\CurrentControlSet\Services\WineBus\map"#,
+                                          "/v", "03000000c82d00001260000001000000", "/t", "REG_SZ", "/d"])
+        #expect(usb.count == 10 && usb.last == "/f")
+        // A mapping SDL accepts: GUID, name, layout, then the platform it is for.
+        let line = usb[8]
+        #expect(line.hasPrefix("03000000c82d00001260000001000000,8BitDo Ultimate 2 Wireless,a:b0,"))
+        #expect(line.hasSuffix(",platform:Mac OS X,"))
+        #expect(commands.contains { $0[4] == "05000000c82d00001260000001000000" })   // Bluetooth
+    }
+
+    @Test func mappingGUIDsAreSDLShaped() {
+        // bus (03 USB / 05 Bluetooth), CRC 0, vendor and product little-endian, version: 32 lowercase hex digits.
+        for guid in ControllerSupport.sdlMappings.flatMap(\.guids) {
+            #expect(guid.range(of: "^0[35]000000[0-9a-f]{24}$", options: .regularExpression) != nil)
+        }
+        // Every layout names the standard XInput controls.
+        for mapping in ControllerSupport.sdlMappings {
+            for control in ["a", "b", "x", "y", "leftx", "lefty", "rightx", "righty", "lefttrigger", "righttrigger", "start"] {
+                #expect(mapping.layout.split(separator: ",").contains { $0.hasPrefix(control + ":") })
+            }
+        }
+    }
+
     @Test func classifiesPadsByVendorAndProduct() {
         #expect(ControllerSupport.Kind.classify(vendorID: 0x054c, productID: 0x09cc) == .playStation)   // Backbone One PS
         #expect(ControllerSupport.Kind.classify(vendorID: 0x054c, productID: 0x0ce6) == .playStation)   // DualSense
@@ -60,5 +87,6 @@ import Testing
         let s = try JSONDecoder().decode(AppSettings.self, from: Data(old.utf8))
         #expect(s.playStationAsXbox == nil)            // nil means on
         #expect(s.appliedControllerCompat == nil)
+        #expect(s.appliedControllerMappings == nil)
     }
 }
