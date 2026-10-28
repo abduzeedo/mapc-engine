@@ -27,6 +27,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var playStationAsXbox: Bool?
     /// What `playStationAsXbox` was last written into each bottle's registry, by bottle.
     public var appliedControllerCompat: [String: Bool]?
+    /// `ControllerSupport.sdlMappingsVersion` last written into each bottle's registry, by bottle.
+    public var appliedControllerMappings: [String: Int]?
     /// "system", "light" or "dark"; `nil` follows the system.
     public var appearance: String?
     /// Game page layout: "magazine" (text on the art's color) or "panels"; `nil` is magazine.

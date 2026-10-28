@@ -46,6 +46,48 @@ public enum ControllerSupport {
         }
     }
 
+    // MARK: SDL mappings
+
+    /// Pads the engine's SDL (2.32.8, from the pinned Gcenx runtime) has no macOS mapping for. Without one, winebus
+    /// exposes the pad as a plain joystick: XInput games see nothing, others get raw axes ("up is down"). Worse,
+    /// Steam's own SDL3 inside Wine has an 8BitDo HIDAPI driver that claims these pads by ID and decodes Wine's
+    /// synthesized HID reports as if they were the pad's own, so Steam Input scrambles them. With a mapping, Wine
+    /// presents an XInput gamepad and both paths work. The layouts match SDL_GameControllerDB's Linux entries for the
+    /// same pad, which line up with its macOS entry for the Ultimate 2C (same axis order).
+    public struct Mapping: Sendable, Equatable {
+        public let name: String
+        /// SDL GUIDs for the pad, one per bus (USB 03, Bluetooth 05).
+        public let guids: [String]
+        public let layout: String
+
+        /// SDL mapping strings, `<guid>,<name>,<layout>,platform:Mac OS X,`.
+        public var lines: [String] { guids.map { "\($0),\(name),\(layout),platform:Mac OS X," } }
+    }
+
+    public static let sdlMappings: [Mapping] = [
+        Mapping(name: "8BitDo Ultimate 2 Wireless",   // 2DC8:6012
+                guids: ["03000000c82d00001260000001000000", "05000000c82d00001260000001000000"],
+                layout: "a:b0,b:b1,back:b10,dpdown:h0.4,dpleft:h0.8,dpright:h0.2,dpup:h0.1,guide:b12,leftshoulder:b6,"
+                    + "leftstick:b13,lefttrigger:a5,leftx:a0,lefty:a1,paddle1:b17,paddle2:b16,paddle3:b2,paddle4:b5,"
+                    + "rightshoulder:b7,rightstick:b14,righttrigger:a4,rightx:a2,righty:a3,start:b11,x:b3,y:b4"),
+    ]
+
+    /// Bump when `sdlMappings` changes, so bottles that have an older set get the new one.
+    public static let sdlMappingsVersion = 1
+
+    /// winebus loads every REG_SZ value under this key as an SDL mapping when it starts (`sdl_bus_load_mappings`).
+    /// `SDL_GAMECONTROLLERCONFIG` in the environment replaces them, and MaPC doesn't set it.
+    static let mappingsKey = #"HKLM\System\CurrentControlSet\Services\WineBus\map"#
+
+    /// The `wine reg` arguments that write `sdlMappings`, one value per GUID named after it. Pure, so it is unit-tested.
+    public static func mappingCommands() -> [[String]] {
+        sdlMappings.flatMap { mapping in
+            zip(mapping.guids, mapping.lines).map { guid, line in
+                ["reg", "add", mappingsKey, "/v", guid, "/t", "REG_SZ", "/d", line, "/f"]
+            }
+        }
+    }
+
     // MARK: What the Mac sees
 
     public enum Kind: String, Sendable {
@@ -123,6 +165,14 @@ public extension WineRunner {
     func applyControllerCompatibility(playStationAsXbox enabled: Bool, engine: Engine, bottle: Bottle) async {
         let env = Self.environment(bottle: bottle, profile: LaunchProfile())
         for arguments in ControllerSupport.registryCommands(playStationAsXbox: enabled) {
+            _ = try? await ProcessRunner.run(engine.wine, arguments, environment: env)
+        }
+    }
+
+    /// Writes `ControllerSupport.sdlMappings` into a bottle. Like the values above, Wine reads them when it starts.
+    func applyControllerMappings(engine: Engine, bottle: Bottle) async {
+        let env = Self.environment(bottle: bottle, profile: LaunchProfile())
+        for arguments in ControllerSupport.mappingCommands() {
             _ = try? await ProcessRunner.run(engine.wine, arguments, environment: env)
         }
     }
