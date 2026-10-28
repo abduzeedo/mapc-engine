@@ -31,6 +31,10 @@ public struct Paths: Sendable {
     public var settingsFile: URL { home.appendingPathComponent("Settings.json") }
     /// The signed-in Steam account's owned games, cached (see `SteamOwnedGames`).
     public var steamOwnedFile: URL { home.appendingPathComponent("SteamOwned.json") }
+    /// The Discover page's Steam rows, cached (see `SteamDiscover`).
+    public var discoverFile: URL { home.appendingPathComponent("Discover.json") }
+    /// Games whose anti-cheat doesn't run under Wine (see `AntiCheatList`).
+    public var antiCheatFile: URL { home.appendingPathComponent("AntiCheat.json") }
     /// One entry per play session (start and length), for the playtime stats.
     public var sessionsFile: URL { home.appendingPathComponent("Sessions.json") }
 
