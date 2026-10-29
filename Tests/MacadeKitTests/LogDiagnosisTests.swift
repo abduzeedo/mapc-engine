@@ -115,6 +115,29 @@ import Testing
         #expect(d.findings[0].action == .installDotNet)
     }
 
+    /// Resident Evil Requiem: GStreamer without an H.264 decoder; the intro MP4 can't open and the game quits.
+    @Test func missingVideoDecoderIsNamed() {
+        let log = """
+        [MaPC] Launch 2026-10-28T16:53:05Z engine=2.0.2 wine=11.0, from CrossOver 26.3.0 source environment=steam backend=d3dMetal
+        03a4:err:winediag:h264_decoder_create GStreamer doesn't support H.264 decoding, please install appropriate plugins
+        0874:warn:mfplat:mpeg4_byte_stream_plugin_factory_CreateInstance Unsupported demuxer, status 0xc000007a.
+        095c:warn:mfplat:media_source_create Failed to construct MFMediaSource, hr 0x8007000e.
+        [MaPC] Exit 2026-10-28T16:59:31Z pid=31747 status=0 reason=exit
+        """
+        let d = LogDiagnosis(log: log)
+        #expect(ids(d) == ["video-codec"])
+        #expect(d.findings[0].action == LogDiagnosis.Action.none)
+    }
+
+    /// Resident Evil Requiem Demo runs fine; Capcom's .NET installer helper failing isn't a reason to install Mono.
+    @Test func capcomInstallerMessageIsNotDotNet() {
+        let log = """
+        [MaPC] Launch 2026-10-28T15:38:53Z engine=2.0.2 wine=11.0, from CrossOver 26.3.0 source environment=steam backend=d3dMetal
+        04f0:err:module:fixup_imports_ilonly mscoree.dll not found, IL-only binary L"InstallerMessage.exe" cannot be loaded
+        04f0:err:module:loader_init Importing dlls for L"C:\\Program Files (x86)\\Steam\\steamapps\\common\\RESIDENT EVIL requiem BIOHAZARD requiem - Demo\\InstallerMessage.exe" failed, status c0000135
+        """
+        #expect(!ids(LogDiagnosis(log: log)).contains("needs-dotnet"))
+    }
     /// Batman: Arkham Knight on DXVK: no cape.
     @Test func untranslatableShadersPointToDXMT() {
         let log = """
