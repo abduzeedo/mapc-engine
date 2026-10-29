@@ -22,6 +22,7 @@ private func fixtureData(_ name: String) throws -> Data {
             "WINEDLLOVERRIDES": "mscoree,mshtml=;winemenubuilder.exe=d;d3d11,d3d10core=n,b",
             "DXVK_ASYNC": "1", "MVK_CONFIG_RESUME_LOST_DEVICE": "1",
             "CX_REPORT_REAL_USERNAME": "1",
+            "SDL_GAMECONTROLLERCONFIG_FILE": "/tmp/m/Bottles/steam/sdl-controller-mappings.txt",
         ])
     }
 
