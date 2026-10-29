@@ -25,18 +25,25 @@ import Testing
         #expect(off.allSatisfy { $0.prefix(2) == ["reg", "delete"] && $0.last == "/f" })
     }
 
-    @Test func mappingsGoUnderWinebusMapOnePerGUID() throws {
-        let commands = ControllerSupport.mappingCommands()
-        #expect(commands.count == ControllerSupport.sdlMappings.flatMap(\.guids).count)
-        let usb = try #require(commands.first { $0[4] == "03000000c82d00001260000001000000" })
-        #expect(Array(usb.prefix(8)) == ["reg", "add", #"HKLM\System\CurrentControlSet\Services\WineBus\map"#,
-                                          "/v", "03000000c82d00001260000001000000", "/t", "REG_SZ", "/d"])
-        #expect(usb.count == 10 && usb.last == "/f")
+    @Test func mappingsGoInAFileNotTheWinebusMapKey() throws {
+        // Any value under WineBus\map crashes winebus (Wine's sdl_bus_load_mappings), so the key is only ever removed.
+        #expect(ControllerSupport.mappingCleanupCommands() == [["reg", "delete", #"HKLM\System\CurrentControlSet\Services\WineBus\map"#, "/f"]])
+        #expect(ControllerSupport.sdlMappingsVersion >= 2)   // bottles 1.1.15 wrote the key into get it removed
+
+        let lines = ControllerSupport.mappingsFileContents().split(separator: "\n").map(String.init)
+        #expect(lines.count == ControllerSupport.sdlMappings.flatMap(\.guids).count)
+        let usb = try #require(lines.first { $0.hasPrefix("03000000c82d00001260000001000000,") })
         // A mapping SDL accepts: GUID, name, layout, then the platform it is for.
-        let line = usb[8]
-        #expect(line.hasPrefix("03000000c82d00001260000001000000,8BitDo Ultimate 2 Wireless,a:b0,"))
-        #expect(line.hasSuffix(",platform:Mac OS X,"))
-        #expect(commands.contains { $0[4] == "05000000c82d00001260000001000000" })   // Bluetooth
+        #expect(usb.hasPrefix("03000000c82d00001260000001000000,8BitDo Ultimate 2 Wireless,a:b0,"))
+        #expect(usb.hasSuffix(",platform:Mac OS X,"))
+        #expect(lines.contains { $0.hasPrefix("05000000c82d00001260000001000000,") })   // Bluetooth
+    }
+
+    @Test func environmentPointsSDLAtTheBottleMappingsFile() {
+        let bottle = Bottle(kind: .steam, paths: Paths(home: URL(fileURLWithPath: "/tmp/m")))
+        let env = WineRunner.environment(bottle: bottle, profile: LaunchProfile(), base: [:])
+        #expect(env["SDL_GAMECONTROLLERCONFIG_FILE"] == ControllerSupport.mappingsFile(in: bottle).path)
+        #expect(env["SDL_GAMECONTROLLERCONFIG"] == nil)   // would replace the file's mappings in winebus
     }
 
     @Test func mappingGUIDsAreSDLShaped() {

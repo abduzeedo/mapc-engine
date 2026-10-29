@@ -72,20 +72,30 @@ public enum ControllerSupport {
                     + "rightshoulder:b7,rightstick:b14,righttrigger:a4,rightx:a2,righty:a3,start:b11,x:b3,y:b4"),
     ]
 
-    /// Bump when `sdlMappings` changes, so bottles that have an older set get the new one.
-    public static let sdlMappingsVersion = 1
+    /// Bump when `sdlMappings` or the way they are delivered changes, so every bottle gets `applyControllerMappings`
+    /// again. 2: mappings moved from the registry to a file (see `mappingsKey`).
+    public static let sdlMappingsVersion = 2
 
-    /// winebus loads every REG_SZ value under this key as an SDL mapping when it starts (`sdl_bus_load_mappings`).
-    /// `SDL_GAMECONTROLLERCONFIG` in the environment replaces them, and MaPC doesn't set it.
+    /// Where MaPC 1.1.15 wrote the mappings. Don't write here: Wine's `sdl_bus_load_mappings` (still the same in
+    /// Wine 11 and master) copies each value into the wrong slot of its array, so any REG_SZ value under this key
+    /// makes winebus crash when it starts ("Auto-start service winebus failed to start"). No controller then reaches
+    /// Windows at all, Xbox and PlayStation pads included. `applyControllerMappings` deletes the key.
     static let mappingsKey = #"HKLM\System\CurrentControlSet\Services\WineBus\map"#
 
-    /// The `wine reg` arguments that write `sdlMappings`, one value per GUID named after it. Pure, so it is unit-tested.
-    public static func mappingCommands() -> [[String]] {
-        sdlMappings.flatMap { mapping in
-            zip(mapping.guids, mapping.lines).map { guid, line in
-                ["reg", "add", mappingsKey, "/v", guid, "/t", "REG_SZ", "/d", line, "/f"]
-            }
-        }
+    /// The `wine reg` arguments that remove `mappingsKey`. Removing a key that isn't there is harmless.
+    public static func mappingCleanupCommands() -> [[String]] {
+        [["reg", "delete", mappingsKey, "/f"]]
+    }
+
+    /// The bottle file `SDL_GAMECONTROLLERCONFIG_FILE` points at. SDL reads it when winebus starts it, keeping only
+    /// lines for its own platform. Windows programs (Steam's own SDL3) inherit the variable but can't open a Mac path.
+    public static func mappingsFile(in bottle: Bottle) -> URL {
+        bottle.url.appendingPathComponent("sdl-controller-mappings.txt")
+    }
+
+    /// `sdlMappings` in SDL_GameControllerDB's file format, one mapping per line.
+    public static func mappingsFileContents() -> String {
+        sdlMappings.flatMap(\.lines).map { $0 + "\n" }.joined()
     }
 
     // MARK: What the Mac sees
@@ -169,10 +179,12 @@ public extension WineRunner {
         }
     }
 
-    /// Writes `ControllerSupport.sdlMappings` into a bottle. Like the values above, Wine reads them when it starts.
+    /// Writes `ControllerSupport.sdlMappings` into the bottle's mappings file and removes the registry key 1.1.15
+    /// wrote them to, which stops winebus from starting. Wine reads both when it starts.
     func applyControllerMappings(engine: Engine, bottle: Bottle) async {
+        try? Data(ControllerSupport.mappingsFileContents().utf8).write(to: ControllerSupport.mappingsFile(in: bottle), options: .atomic)
         let env = Self.environment(bottle: bottle, profile: LaunchProfile())
-        for arguments in ControllerSupport.mappingCommands() {
+        for arguments in ControllerSupport.mappingCleanupCommands() {
             _ = try? await ProcessRunner.run(engine.wine, arguments, environment: env)
         }
     }

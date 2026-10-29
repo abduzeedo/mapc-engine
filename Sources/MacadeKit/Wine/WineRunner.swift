@@ -89,6 +89,8 @@ public struct WineRunner: Sendable {
         // engines report the Mac user. Without this, data one engine encrypts (Steam's saved login) can't be read
         // after an engine switch. Only CrossOver-based engines read it.
         env["CX_REPORT_REAL_USERNAME"] = "1"
+        // Extra SDL controller mappings for winebus (see `ControllerSupport.sdlMappings`). A missing file is ignored.
+        env["SDL_GAMECONTROLLERCONFIG_FILE"] = ControllerSupport.mappingsFile(in: bottle).path
         for (k, v) in profile.extraEnvironment { env[k] = v }   // user settings win
         return env
     }
