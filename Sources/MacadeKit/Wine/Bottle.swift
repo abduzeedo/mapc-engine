@@ -1,6 +1,6 @@
 import Foundation
 
-public enum BottleKind: String, Codable, Sendable, CaseIterable { case steam, epic, gog, ubisoft, ea }
+public enum BottleKind: String, Codable, Sendable, CaseIterable { case steam, epic, gog, amazon, ubisoft, ea }
 
 /// A Wine prefix. One per store (plan §3).
 public struct Bottle: Sendable, Equatable {

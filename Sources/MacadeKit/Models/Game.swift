@@ -1,13 +1,14 @@
 import Foundation
 
 public enum StoreKind: String, Codable, Sendable, CaseIterable {
-    case steam, epic, gog, ubisoft, ea
+    case steam, epic, gog, amazon, ubisoft, ea
 
     public var displayName: String {
         switch self {
         case .steam: "Steam"
         case .epic: "Epic Games"
         case .gog: "GOG"
+        case .amazon: "Amazon Games"
         case .ubisoft: "Ubisoft Connect"
         case .ea: "EA app"
         }
