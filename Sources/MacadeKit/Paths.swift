@@ -27,6 +27,8 @@ public struct Paths: Sendable {
     public var legendaryConfig: URL { home.appendingPathComponent("legendary", isDirectory: true) }
     /// gogdl's tokens and manifests (owner-only, like Legendary's).
     public var gogConfig: URL { home.appendingPathComponent("gog", isDirectory: true) }
+    /// Nile's Amazon tokens (encrypted by Nile, owner-only too), library and installs.
+    public var amazonConfig: URL { home.appendingPathComponent("amazon", isDirectory: true) }
     public var libraryFile: URL { home.appendingPathComponent("Library.json") }
     public var settingsFile: URL { home.appendingPathComponent("Settings.json") }
     /// The signed-in Steam account's owned games, cached (see `SteamOwnedGames`).
@@ -57,11 +59,12 @@ public struct Paths: Sendable {
     }
 
     public func createDirectories() throws {
-        for dir in [engines, tools, bottles, artwork, logs, legendaryConfig, gogConfig] {
+        for dir in [engines, tools, bottles, artwork, logs, legendaryConfig, gogConfig, amazonConfig] {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         }
         // Legendary keeps Epic login tokens here: owner-only, whatever the umask says.
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: legendaryConfig.path)
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: gogConfig.path)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: amazonConfig.path)
     }
 }

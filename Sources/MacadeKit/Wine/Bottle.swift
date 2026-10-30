@@ -1,6 +1,6 @@
 import Foundation
 
-public enum BottleKind: String, Codable, Sendable, CaseIterable { case steam, epic, gog, ubisoft, ea }
+public enum BottleKind: String, Codable, Sendable, CaseIterable { case steam, epic, gog, amazon, ubisoft, ea }
 
 /// A Wine prefix. One per store (plan §3).
 public struct Bottle: Sendable, Equatable {
@@ -63,7 +63,7 @@ public struct BottleManager: Sendable {
 
     /// Stores whose environment holds only games, so nothing but a first Play creates it: Epic and GOG. Steam, Ubisoft
     /// and EA create theirs when their launcher is set up, and an empty one would hide that the launcher is missing.
-    public static func createsEnvironmentOnPlay(_ store: StoreKind) -> Bool { store == .epic || store == .gog }
+    public static func createsEnvironmentOnPlay(_ store: StoreKind) -> Bool { store == .epic || store == .gog || store == .amazon }
 
     /// Gets a store's environment ready for a game. It's rebuilt when it is missing, for instance after a reset,
     /// so a reset never leaves a store unplayable. Does nothing for stores that set up their own launcher.
