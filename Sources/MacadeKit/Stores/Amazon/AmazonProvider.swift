@@ -127,6 +127,14 @@ public struct AmazonProvider: StoreProvider, Sendable {
 
     func postInstallMarker(_ id: String) -> URL { paths.amazonConfig.appendingPathComponent("postinstall/\(id)") }
 
+    /// The game has PostInstall steps that haven't run yet (they run before its first start).
+    public func needsPostInstall(_ game: Game) -> Bool {
+        guard !FileManager.default.fileExists(atPath: postInstallMarker(game.storeID).path),
+              let folder = installPath(game.storeID),
+              let data = try? Data(contentsOf: folder.appendingPathComponent("fuel.json")) else { return false }
+        return !AmazonParser.postInstall(data).isEmpty
+    }
+
     /// Runs the game's `fuel.json` PostInstall steps once in the Amazon environment, as Amazon's launcher does.
     /// They are the game's own files from Amazon; a step outside the game folder is refused.
     public func runPostInstall(_ game: Game, engine: Engine) async throws {
