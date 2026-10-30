@@ -47,7 +47,7 @@ public struct AmazonProvider: StoreProvider, Sendable {
     public var gamesFolder: URL { (gamesRoot ?? paths.defaultGamesFolder).appendingPathComponent("Amazon", isDirectory: true) }
     /// Nile adds `nile` to `NILE_CONFIG_PATH`.
     var configFolder: URL { paths.amazonConfig.appendingPathComponent("nile", isDirectory: true) }
-    var userFile: URL { configFolder.appendingPathComponent("user.json") }
+    var userFile: URL { configFolder.appendingPathComponent("current_user.json") }
     var libraryFile: URL { configFolder.appendingPathComponent("library.json") }
     var installedFile: URL { configFolder.appendingPathComponent("installed.json") }
     public var isHelperInstalled: Bool { FileManager.default.isExecutableFile(atPath: nile.path) }
@@ -87,8 +87,13 @@ public struct AmazonProvider: StoreProvider, Sendable {
                               "--client-id", request.client_id, "--code-verifier", request.code_verifier,
                               "--serial", request.serial])
         guard isSignedIn else { throw AmazonError.failed("Amazon sign-in failed. Please try again.") }
-        for file in [userFile, libraryFile] {
-            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
+        // Nile writes with the default umask; its encrypted tokens sit beside these files.
+        let fm = FileManager.default
+        for name in (try? fm.contentsOfDirectory(atPath: configFolder.path)) ?? [] {
+            let path = configFolder.appendingPathComponent(name).path
+            var isDirectory: ObjCBool = false
+            fm.fileExists(atPath: path, isDirectory: &isDirectory)
+            try? fm.setAttributes([.posixPermissions: isDirectory.boolValue ? 0o700 : 0o600], ofItemAtPath: path)
         }
     }
 
