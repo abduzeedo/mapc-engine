@@ -58,6 +58,7 @@ public struct BottleManager: Sendable {
         _ = try await ProcessRunner.run(
             engine.wine, ["reg", "add", #"HKCU\Software\Wine\Mac Driver"#, "/v", "LeftCommandIsCtrl", "/d", "y", "/f"],
             environment: env)
+        await WineRunner(paths: paths).applyFontLinks(engine: engine, bottle: bottle)
         return bottle
     }
 
