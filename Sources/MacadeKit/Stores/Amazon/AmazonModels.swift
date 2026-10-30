@@ -51,6 +51,23 @@ public enum AmazonParser {
         return Dictionary(entries.map { ($0.id, URL(fileURLWithPath: $0.path, isDirectory: true)) }, uniquingKeysWith: { a, _ in a })
     }
 
+    /// A step `fuel.json` runs once after install, usually a bundled runtime installer (Fatal Fury Special's
+    /// Visual C++ runtime). Without it some games crash at start.
+    public struct PostInstallStep: Equatable, Sendable {
+        public var command: String
+        public var arguments: [String]
+        public var validReturns: [Int32]
+    }
+
+    public static func postInstall(_ data: Data) -> [PostInstallStep] {
+        struct Fuel: Decodable {
+            struct Step: Decodable { let Command: String; let Args: [String]?; let ValidReturns: [Int32]? }
+            let PostInstall: [Step]?
+        }
+        guard let steps = (try? JSONDecoder().decode(Fuel.self, from: cleaned(data)))?.PostInstall else { return [] }
+        return steps.map { PostInstallStep(command: $0.Command, arguments: $0.Args ?? [], validReturns: $0.ValidReturns ?? [0]) }
+    }
+
     /// What starts an Amazon game: `Main` in `fuel.json`. Nile reads it as JSON5; the files seen so far are
     /// plain JSON, and a BOM or trailing comma isn't worth a JSON5 parser.
     public static func fuel(_ data: Data) -> GOGParser.PlayTask? {
@@ -62,11 +79,14 @@ public enum AmazonParser {
             }
             let Main: Main
         }
-        var text = String(decoding: data, as: UTF8.self)
-        if text.hasPrefix("\u{FEFF}") { text.removeFirst() }
-        text = text.replacingOccurrences(of: #",\s*([}\]])"#, with: "$1", options: .regularExpression)
-        guard let main = (try? JSONDecoder().decode(Fuel.self, from: Data(text.utf8)))?.Main else { return nil }
+        guard let main = (try? JSONDecoder().decode(Fuel.self, from: cleaned(data)))?.Main else { return nil }
         return GOGParser.PlayTask(path: main.Command, arguments: main.Args ?? [],
                                   workingDirectory: main.WorkingSubdirOverride.flatMap { $0.isEmpty ? nil : $0 })
+    }
+
+    private static func cleaned(_ data: Data) -> Data {
+        var text = String(decoding: data, as: UTF8.self)
+        if text.hasPrefix("\u{FEFF}") { text.removeFirst() }
+        return Data(text.replacingOccurrences(of: #",\s*([}\]])"#, with: "$1", options: .regularExpression).utf8)
     }
 }

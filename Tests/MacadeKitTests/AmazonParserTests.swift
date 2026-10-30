@@ -30,4 +30,10 @@ import Testing
         let task = AmazonParser.fuel(Data(json.utf8))
         #expect(task == GOGParser.PlayTask(path: #"Bin\Game.exe"#, arguments: ["-amazon"], workingDirectory: "Bin"))
     }
+
+    @Test func postInstallSteps() {
+        let json = #"{"SchemaVersion":"2","PostInstall":[{"Command":"dependencies\\vcredist_x86.exe","Args":["/q","/norestart"],"ValidReturns":[0,5100]}],"Main":{"Command":"Game.exe"}}"#
+        #expect(AmazonParser.postInstall(Data(json.utf8)) == [.init(command: #"dependencies\vcredist_x86.exe"#, arguments: ["/q", "/norestart"], validReturns: [0, 5100])])
+        #expect(AmazonParser.postInstall(Data(#"{"Main":{"Command":"Game.exe"}}"#.utf8)).isEmpty)
+    }
 }

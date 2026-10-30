@@ -125,6 +125,30 @@ public struct AmazonProvider: StoreProvider, Sendable {
 
     // MARK: Install / play
 
+    func postInstallMarker(_ id: String) -> URL { paths.amazonConfig.appendingPathComponent("postinstall/\(id)") }
+
+    /// Runs the game's `fuel.json` PostInstall steps once in the Amazon environment, as Amazon's launcher does.
+    /// They are the game's own files from Amazon; a step outside the game folder is refused.
+    public func runPostInstall(_ game: Game, engine: Engine) async throws {
+        let marker = postInstallMarker(game.storeID)
+        guard !FileManager.default.fileExists(atPath: marker.path), let folder = installPath(game.storeID),
+              let data = try? Data(contentsOf: folder.appendingPathComponent("fuel.json")) else { return }
+        let root = folder.standardizedFileURL.path + "/"
+        for step in AmazonParser.postInstall(data) {
+            let exe = step.command.split(whereSeparator: { $0 == "\\" || $0 == "/" })
+                .reduce(folder) { $0.appendingPathComponent(String($1)) }.standardizedFileURL
+            guard exe.path.hasPrefix(root), FileManager.default.fileExists(atPath: exe.path) else { continue }
+            let env = WineRunner.environment(bottle: bottle, profile: LaunchProfile())
+            let r = try await ProcessRunner.run(engine.wine, [exe.path] + step.arguments, environment: env,
+                                                currentDirectory: exe.deletingLastPathComponent())
+            guard step.validReturns.contains(r.status) else {
+                throw AmazonError.failed("\(game.title) couldn't finish setting up (\(exe.lastPathComponent) returned \(r.status)).")
+            }
+        }
+        try FileManager.default.createDirectory(at: marker.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data().write(to: marker)
+    }
+
     /// Downloads and installs the game. Cancelling stops it; running again resumes.
     public func install(_ game: Game, onProgress: @escaping @Sendable (Double) -> Void) async throws {
         guard isSignedIn else { throw AmazonError.notSignedIn }
@@ -138,12 +162,14 @@ public struct AmazonProvider: StoreProvider, Sendable {
         guard r.succeeded, installPath(game.storeID) != nil else {
             throw AmazonError.failed("The install didn't finish. You can resume it.")
         }
+        try? FileManager.default.removeItem(at: postInstallMarker(game.storeID))
     }
 
     /// Nile deletes only the files its manifest installed (saves the game wrote are kept).
     public func uninstall(_ game: Game) async throws {
         let r = try await ProcessRunner.run(nile, ["uninstall", game.storeID], environment: environment) { _ in }
         guard r.succeeded else { throw AmazonError.failed("Couldn't uninstall \(game.title).") }
+        try? FileManager.default.removeItem(at: postInstallMarker(game.storeID))
     }
 
     /// Starts the game's `fuel.json` command in the Amazon environment, with the variables Amazon's
