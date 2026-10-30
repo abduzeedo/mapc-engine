@@ -11,7 +11,7 @@ import Foundation
 /// An entry is `<file basename>,<family name>`. Wine resolves it with `find_face_from_filename(file, family)`:
 /// the second field is the FAMILY name (`Heiti TC`), never a face name (`Heiti TC Medium` silently fails).
 public enum FontLinks {
-    static let systemLinkKey = #"HKLM\Software\Microsoft\Windows NT\CurrentVersion\FontLink\SystemLink"#
+    static let systemLinkKey = "HKLM\\Software\\Microsoft\\Windows NT\\CurrentVersion\\FontLink\\SystemLink"
     /// Fonts that get the link list.
     static let faces = ["Tahoma", "Microsoft Sans Serif"]
 
