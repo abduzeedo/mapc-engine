@@ -149,9 +149,13 @@ public struct AmazonProvider: StoreProvider, Sendable {
         try Data().write(to: marker)
     }
 
-    /// Downloads and installs the game. Cancelling stops it; running again resumes.
+    /// Downloads and installs the game. Cancelling stops it; running again resumes. One at a time: each Nile
+    /// process keeps the installed list it read at start and writes it back when done, so two at once lose a game.
     public func install(_ game: Game, onProgress: @escaping @Sendable (Double) -> Void) async throws {
         guard isSignedIn else { throw AmazonError.notSignedIn }
+        await NileQueue.shared.acquire()
+        defer { Task { await NileQueue.shared.release() } }
+        try Task.checkCancellation()
         try FileManager.default.createDirectory(at: gamesFolder, withIntermediateDirectories: true)
         let r = try await ProcessRunner.run(nile, ["install", game.storeID, "--base-path", gamesFolder.path],
                                             environment: environment) { line in
@@ -167,6 +171,8 @@ public struct AmazonProvider: StoreProvider, Sendable {
 
     /// Nile deletes only the files its manifest installed (saves the game wrote are kept).
     public func uninstall(_ game: Game) async throws {
+        await NileQueue.shared.acquire()
+        defer { Task { await NileQueue.shared.release() } }
         let r = try await ProcessRunner.run(nile, ["uninstall", game.storeID], environment: environment) { _ in }
         guard r.succeeded else { throw AmazonError.failed("Couldn't uninstall \(game.title).") }
         try? FileManager.default.removeItem(at: postInstallMarker(game.storeID))
@@ -226,5 +232,21 @@ public struct AmazonProvider: StoreProvider, Sendable {
                 } catch { cont.resume(throwing: error) }
             }
         }
+    }
+}
+
+/// Lets one Nile install or uninstall run at a time; they all rewrite `installed.json`.
+actor NileQueue {
+    static let shared = NileQueue()
+    private var busy = false
+    private var waiting: [CheckedContinuation<Void, Never>] = []
+
+    func acquire() async {
+        guard busy else { busy = true; return }
+        await withCheckedContinuation { waiting.append($0) }
+    }
+
+    func release() {
+        if waiting.isEmpty { busy = false } else { waiting.removeFirst().resume() }
     }
 }
