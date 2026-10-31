@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import Testing
 @testable import MacadeKit
@@ -90,6 +91,58 @@ import Testing
         let xml = "<DiPManifest><contentIDs><contentID>71173</contentID><contentID>1035052</contentID></contentIDs></DiPManifest>"
         #expect(LauncherStore.eaContentID(installerXML: xml) == "71173")
         #expect(LauncherStore.eaContentID(installerXML: "<x/>") == nil)
+    }
+
+    @Test func eaSigningRootsArePinned() throws {
+        for root in EASigningRoots.roots {
+            let der = root.der
+            #expect(Insecure.SHA1.hash(data: der).map { String(format: "%02X", $0) }.joined() == root.sha1)
+            #expect(SHA256.hash(data: der).map { String(format: "%02x", $0) }.joined() == root.sha256)
+            let blob = EASigningRoots.blob(root)
+            // SHA-1 property first, the certificate last, as Wine's own root entries are laid out.
+            #expect(blob.prefix(12) == Data([3, 0, 0, 0, 1, 0, 0, 0, 20, 0, 0, 0]))
+            #expect(blob.suffix(der.count) == der)
+        }
+        #expect(EASigningRoots.roots.map(\.sha256) == ["9acfab7e43c8d880d06b262a94deeee4b4659989c3d0caf19baf6405e41ab7df",
+                                                       "2399561127a57125de8cefea610ddf2fa078b5c8067f4e828290bfb860e84b3c"])
+        let reg = #"[Software\\Microsoft\\SystemCertificates\\Root\\Certificates\\4EB6D578499B1CCF5F581EAD56BE3D9B6744A5E5] 1793"#
+        #expect(EASigningRoots.missing(systemReg: reg).map(\.sha1) == ["3679CA35668772304D30A5FB873B0FA77BB70D54"])
+    }
+
+    @Test func eaProgramsFromInstallerData() {
+        let xml = #"""
+        <runtime>
+          <launcher uid="1-2"><filePath>[HKEY_LOCAL_MACHINE\SOFTWARE\X\Install Dir]Game32.exe</filePath><requires64BitOS>0</requires64BitOS><trial>0</trial></launcher>
+          <launcher uid="1-1"><filePath>[HKEY_LOCAL_MACHINE\SOFTWARE\Respawn\Jedi Fallen Order\Install Dir]SwGame\Binaries\Win64\starwarsjedifallenorder.exe</filePath>
+            <requires64BitOS>1</requires64BitOS><trial>0</trial></launcher>
+          <launcher uid="1-3"><filePath>[HKEY_LOCAL_MACHINE\SOFTWARE\X\Install Dir]Trial.exe</filePath><trial>1</trial></launcher>
+          <launcher uid="1-4"><filePath>[HKEY_LOCAL_MACHINE\SOFTWARE\X\Install Dir]..\..\evil.exe</filePath></launcher>
+        </runtime>
+        """#
+        #expect(LauncherStore.eaPrograms(installerXML: xml) == ["SwGame/Binaries/Win64/starwarsjedifallenorder.exe", "Game32.exe"])
+        #expect(LauncherStore.eaPrograms(installerXML: "<x/>").isEmpty)
+    }
+
+    @Test func eaTitlePrefersUSEnglish() {
+        let xml = """
+        <gameTitles>
+          <gameTitle locale="fr_FR">Jeu</gameTitle>
+          <gameTitle locale="en_US">STAR WARS Jedi - Fallen Order™</gameTitle>
+        </gameTitles>
+        """
+        #expect(LauncherStore.eaTitle(installerXML: xml) == "STAR WARS Jedi - Fallen Order™")
+        #expect(LauncherStore.eaTitle(installerXML: #"<gameTitle locale="de_DE">Need for Speed &amp; Co</gameTitle>"#) == "Need for Speed & Co")
+        #expect(LauncherStore.eaTitle(installerXML: "<x/>") == nil)
+    }
+
+    @Test func eaAppDrawsInSoftwareUbisoftUnchanged() {
+        let paths = Paths(home: FileManager.default.temporaryDirectory)
+        let ea = LauncherStore(kind: .ea, paths: paths), ubisoft = LauncherStore(kind: .ubisoft, paths: paths)
+        #expect(ea.launcherArguments.contains("--in-process-gpu"))
+        #expect(ea.launcherEnvironment["QT_QUICK_BACKEND"] == "software")
+        #expect(ea.launcherEnvironment["QMLSCENE_DEVICE"] == "softwarecontext")
+        #expect(ea.installerArguments == ["EAX_LAUNCH_CLIENT=0"] && ubisoft.installerArguments == ["/S"])
+        #expect(ubisoft.launcherArguments.isEmpty && ubisoft.launcherEnvironment.isEmpty)
     }
 }
 

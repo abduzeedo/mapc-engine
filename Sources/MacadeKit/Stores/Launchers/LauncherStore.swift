@@ -25,13 +25,27 @@ public struct LauncherStore: StoreProvider, Sendable {
         }
     }
 
-    /// Ubisoft's installer runs silently; EA's shows its own setup window, so the user can follow it.
-    var installerArguments: [String] { kind == .ubisoft ? ["/S"] : [] }
+    /// Ubisoft's installer runs silently; EA's shows its own setup window, so the user can follow it. EA's would
+    /// then open the EA app itself, without `launcherArguments` and `launcherEnvironment`, and the app lets one
+    /// copy run: Open would only bring up that broken window. `EAX_LAUNCH_CLIENT` is the installer's own switch.
+    var installerArguments: [String] { kind == .ubisoft ? ["/S"] : ["EAX_LAUNCH_CLIENT=0"] }
 
-    /// The EA app embeds CEF (not Qt WebEngine, so the `QTWEBENGINE_*` variables don't reach it). Its GPU
-    /// process crashes under D3DMetal (no `IDXGIResource::GetSharedHandle`) and the window stays dark
-    /// blue, so it renders in software. CEF reads these switches from the app's own command line.
-    var launcherArguments: [String] { kind == .ea ? ["--disable-gpu", "--disable-gpu-compositing"] : [] }
+    /// The EA app is a Qt Quick window with CEF in child windows (not Qt WebEngine, so the `QTWEBENGINE_*`
+    /// variables don't reach it). CEF reads these switches from the app's own command line: it renders in
+    /// software, and in-process, since Wine on the Mac doesn't show what CEF's GPU process draws into the app's
+    /// window (the page stayed black, though it took clicks). Tested 2026-10-30 on EA app 13.813.
+    var launcherArguments: [String] {
+        kind == .ea ? ["--disable-gpu", "--disable-gpu-compositing", "--in-process-gpu"] : []
+    }
+
+    /// Qt Quick draws the EA app's window through Direct3D, which on the Mac is a Metal layer over the whole
+    /// window, CEF's child windows included: the window stayed dark blue. Drawn in software, Qt and CEF share
+    /// the window. Qt reads the older `QMLSCENE_DEVICE` first: with only `QT_QUICK_BACKEND`, the app still drew
+    /// through Direct3D on the D3DMetal engine (2026-10-30). Games the EA app starts inherit both; they only
+    /// change Qt Quick programs.
+    var launcherEnvironment: [String: String] {
+        kind == .ea ? ["QT_QUICK_BACKEND": "software", "QMLSCENE_DEVICE": "softwarecontext"] : [:]
+    }
 
     /// The launcher's own executable inside the environment.
     public var launcherExecutable: URL {
@@ -63,6 +77,7 @@ public struct LauncherStore: StoreProvider, Sendable {
         try await BottleManager(paths: paths).ensure(kind.bottleKind, engine: engine)
         // The EA app's installer has a .NET custom action; without Wine Mono it fails with error 1603.
         try await WineMono(paths: paths).ensureInstalled(in: bottle, engine: engine)
+        await prepare(engine: engine)
         let (tmp, response) = try await URLSession.shared.download(from: installerURL)
         guard (response as? HTTPURLResponse)?.statusCode == 200 else {
             throw WineRunnerError.launchFailed("couldn't download the \(kind.displayName) installer")
@@ -124,10 +139,26 @@ public struct LauncherStore: StoreProvider, Sendable {
             .map { dir in
                 let xml = (try? String(contentsOf: dir.appendingPathComponent("__Installer/installerdata.xml"), encoding: .utf8)) ?? ""
                 let id = eaContentID(installerXML: xml) ?? dir.lastPathComponent
-                return Game(store: .ea, storeID: id, title: dir.lastPathComponent, isInstalled: true,
+                return Game(store: .ea, storeID: id, title: eaTitle(installerXML: xml) ?? dir.lastPathComponent, isInstalled: true,
                             installPath: dir, sizeOnDisk: GOGProvider.folderSize(dir))
             }
             .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+    }
+
+    /// The game's name in its installer data, US English first: the folder name is shortened ("Jedi Fallen Order"
+    /// for "STAR WARS Jedi - Fallen Order™"), and the full one is what finds the game's artwork on Steam.
+    static func eaTitle(installerXML: String) -> String? {
+        let pattern = #"<gameTitle\b([^>]*)>([^<]*)</gameTitle>"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        let text = installerXML as NSString
+        let titles: [(attributes: String, title: String)] = regex
+            .matches(in: installerXML, range: NSRange(location: 0, length: text.length))
+            .map { (text.substring(with: $0.range(at: 1)), text.substring(with: $0.range(at: 2))) }
+            .map { ($0.0, $0.1.replacingOccurrences(of: "&quot;", with: "\"").replacingOccurrences(of: "&apos;", with: "'")
+                        .replacingOccurrences(of: "&lt;", with: "<").replacingOccurrences(of: "&gt;", with: ">")
+                        .replacingOccurrences(of: "&amp;", with: "&").trimmingCharacters(in: .whitespacesAndNewlines)) }
+            .filter { !$0.1.isEmpty }
+        return (titles.first { $0.attributes.contains(#"locale="en_US""#) } ?? titles.first)?.title
     }
 
     /// First `<contentID>` in the game's installer data, which the EA app accepts in launch links.
@@ -140,6 +171,13 @@ public struct LauncherStore: StoreProvider, Sendable {
 
     // MARK: Launching
 
+    /// What the environment needs before the launcher starts: for EA, the roots its game installers are signed under
+    /// (`EASigningRoots`). Call it before `launchLauncher` and `play`; it does nothing once they're there.
+    public func prepare(engine: Engine) async {
+        guard kind == .ea, bottle.exists else { return }
+        await EASigningRoots.ensure(in: bottle, engine: engine)
+    }
+
     /// Opens the launcher window.
     @discardableResult
     public func launchLauncher(engine: Engine, profile: LaunchProfile = LaunchProfile(),
@@ -147,14 +185,58 @@ public struct LauncherStore: StoreProvider, Sendable {
         try start([], engine: engine, profile: profile, logID: kind.rawValue, onExit: onExit)
     }
 
-    /// Asks the launcher to start the game (it signs in, checks for updates, then runs it).
+    /// Starts the game. An EA game with a program named in its installer data runs that program directly, with the
+    /// game's own profile: it asks the running EA app for its license, which finds the offer itself, and goes on
+    /// (2026-10-30, EA app 13.813). The EA app must already be running (`launchLauncher`), or the game starts it
+    /// without `launcherArguments`. Launch links are the fallback: this EA app takes only offer IDs in them
+    /// ("There are no valid keys in the launchGameRequest" for a content ID), and nothing on disk names the offer.
     @discardableResult
     public func play(_ game: Game, engine: Engine, profile: LaunchProfile,
                      onExit: (@Sendable (Int32) -> Void)? = nil) throws -> RunningProcess {
+        if let program = gameProgram(game) {
+            return try runner.run(engine: engine, bottle: bottle, executable: program.path, arguments: profile.extraArguments,
+                                  workingDirectory: program.deletingLastPathComponent(), profile: profile,
+                                  logID: game.id, onExit: onExit)
+        }
         let link = kind == .ubisoft
             ? "uplay://launch/\(game.storeID)/0"
             : "link2ea://launchgame/\(game.storeID)?platform=PCWIN"
         return try start([link] + profile.extraArguments, engine: engine, profile: profile, logID: game.id, onExit: onExit)
+    }
+
+    /// The program an installed EA game runs, from its installer data, when it's there.
+    public func gameProgram(_ game: Game) -> URL? {
+        guard kind == .ea, let folder = game.installPath,
+              let xml = try? String(contentsOf: folder.appendingPathComponent("__Installer/installerdata.xml"), encoding: .utf8)
+        else { return nil }
+        return Self.eaPrograms(installerXML: xml).lazy
+            .map { folder.appendingPathComponent($0) }
+            .first { FileManager.default.fileExists(atPath: $0.path) }
+    }
+
+    /// The game's programs in its installer data (`<runtime><launcher><filePath>`), as paths inside the game's
+    /// folder, 64-bit first and trials left out. The path starts with the registry value holding the install folder,
+    /// `[HKEY_LOCAL_MACHINE\SOFTWARE\Respawn\Jedi Fallen Order\Install Dir]SwGame\...`: what follows is relative to it.
+    static func eaPrograms(installerXML: String) -> [String] {
+        let pattern = #"<launcher\b[^>]*>(.*?)</launcher>"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: .dotMatchesLineSeparators) else { return [] }
+        let text = installerXML as NSString
+        func value(_ tag: String, in block: String) -> String? {
+            guard let open = block.range(of: "<\(tag)>"), let close = block.range(of: "</\(tag)>", range: open.upperBound..<block.endIndex)
+            else { return nil }
+            return block[open.upperBound..<close.lowerBound].trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        let launchers = regex.matches(in: installerXML, range: NSRange(location: 0, length: text.length))
+            .map { text.substring(with: $0.range(at: 1)) }
+            .filter { value("trial", in: $0) != "1" }
+        let ordered = launchers.filter { value("requires64BitOS", in: $0) == "1" } + launchers.filter { value("requires64BitOS", in: $0) != "1" }
+        return ordered.compactMap { block -> String? in
+            guard var path = value("filePath", in: block) else { return nil }
+            if path.hasPrefix("["), let end = path.firstIndex(of: "]") { path = String(path[path.index(after: end)...]) }
+            path = path.replacingOccurrences(of: "\\", with: "/")
+            guard !path.isEmpty, !path.hasPrefix("/"), !path.contains(":"), !path.split(separator: "/").contains("..") else { return nil }
+            return path
+        }
     }
 
     private func start(_ arguments: [String], engine: Engine, profile: LaunchProfile, logID: String,
@@ -162,7 +244,8 @@ public struct LauncherStore: StoreProvider, Sendable {
         guard isLauncherInstalled else { throw WineRunnerError.launchFailed("\(kind.displayName) isn't installed") }
         // Both launchers embed Chromium, which needs the same no-GPU flags as Steam's web helper.
         var profile = profile
-        profile.extraEnvironment = SteamProvider.webEngineEnvironment.merging(profile.extraEnvironment) { _, user in user }
+        profile.extraEnvironment = SteamProvider.webEngineEnvironment.merging(launcherEnvironment) { _, own in own }
+            .merging(profile.extraEnvironment) { _, user in user }
         return try runner.run(engine: engine, bottle: bottle, executable: launcherExecutable.path,
                               arguments: launcherArguments + arguments,
                               workingDirectory: launcherExecutable.deletingLastPathComponent(), profile: profile,
