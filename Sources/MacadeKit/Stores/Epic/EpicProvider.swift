@@ -89,12 +89,14 @@ public struct EpicProvider: StoreProvider, Sendable {
 
     // MARK: Install / play
 
-    /// Downloads and installs. Cancelling the task stops the download; running again resumes it.
+    /// Downloads and installs. Cancelling the task stops the download; running again resumes it. `--skip-sdl`:
+    /// legendary runs with no stdin attached, so a title with optional packs (e.g. language packs) would otherwise
+    /// stop to prompt for which to install and crash on EOF; this installs only the required data instead.
     public func install(_ game: Game, onProgress: @escaping @Sendable (Double) -> Void) async throws {
         try FileManager.default.createDirectory(at: gamesFolder, withIntermediateDirectories: true)
         let r = try await ProcessRunner.run(
             legendary,
-            ["install", game.storeID, "--platform", "Windows", "--base-path", gamesFolder.path, "-y"],
+            ["install", game.storeID, "--platform", "Windows", "--base-path", gamesFolder.path, "-y", "--skip-sdl"],
             environment: environment
         ) { line in
             switch line {
@@ -107,7 +109,7 @@ public struct EpicProvider: StoreProvider, Sendable {
     /// Installs the update Epic released for an installed game, in place. legendary won't start a game that has
     /// one (`Game is out of date`). Cancelling stops the download; running again resumes it.
     public func update(_ game: Game, onProgress: @escaping @Sendable (Double) -> Void) async throws {
-        let r = try await ProcessRunner.run(legendary, ["update", game.storeID, "-y"], environment: environment) { line in
+        let r = try await ProcessRunner.run(legendary, ["update", game.storeID, "-y", "--skip-sdl"], environment: environment) { line in
             switch line {
             case .stdout(let s), .stderr(let s): if let p = LegendaryParser.progress(from: s) { onProgress(p) }
             }
