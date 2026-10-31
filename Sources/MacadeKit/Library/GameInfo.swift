@@ -33,6 +33,8 @@ public struct GameInfo: Codable, Equatable, Sendable {
     /// Box art for games whose store gives none (Steam's `library_600x900.jpg`).
     public var coverURL: URL?
     public var fetched = Date()
+    /// The title Steam was searched for (games from other stores), so a renamed game is looked up again.
+    public var searchedTitle: String?
 
     public init() {}
 }
@@ -45,6 +47,9 @@ public actor GameInfoService {
     private let session: URLSession
     private var memory: [String: GameInfo] = [:]
     private static let maxAge: TimeInterval = 30 * 24 * 3600
+    /// A title Steam didn't match is asked again sooner: the lookup improves (`searchTerm`) and a store's name for
+    /// the game can change (EA games went from folder names to their real ones).
+    private static let missMaxAge: TimeInterval = 24 * 3600
 
     public init(paths: Paths, session: URLSession = .shared) {
         self.directory = paths.home.appendingPathComponent("GameInfo", isDirectory: true)
@@ -61,7 +66,10 @@ public actor GameInfoService {
     }
 
     public func info(for game: Game) async -> GameInfo? {
-        if let hit = cached(for: game), Date().timeIntervalSince(hit.fetched) < Self.maxAge { return hit }
+        if let hit = cached(for: game), hit.searchedTitle.map({ $0 == game.title }) ?? true,
+           Date().timeIntervalSince(hit.fetched) < (hit.steamAppID == nil && game.store != .steam ? Self.missMaxAge : Self.maxAge) {
+            return hit
+        }
         var info: GameInfo?
         do {
             let appID = game.store == .steam ? game.storeID : try await steamAppID(matching: game.title)
@@ -71,6 +79,7 @@ public actor GameInfoService {
         }
         var result = info ?? GameInfo()
         result.fetched = Date()
+        if game.store != .steam { result.searchedTitle = game.title }
         memory[game.id] = result
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         try? Self.encoder.encode(result).write(to: file(for: game), options: .atomic)
@@ -81,7 +90,7 @@ public actor GameInfoService {
 
     func steamAppID(matching title: String) async throws -> String? {
         var c = URLComponents(string: "https://store.steampowered.com/api/storesearch/")!
-        c.queryItems = [.init(name: "term", value: title), .init(name: "cc", value: "us"), .init(name: "l", value: "en")]
+        c.queryItems = [.init(name: "term", value: Self.searchTerm(title)), .init(name: "cc", value: "us"), .init(name: "l", value: "en")]
         let (data, _) = try await session.data(from: c.url!)
         struct Search: Decodable { struct Item: Decodable { let id: Int; let name: String }; let items: [Item] }
         let items = try JSONDecoder().decode(Search.self, from: data).items
@@ -149,6 +158,17 @@ public actor GameInfoService {
     }
 
     // MARK: Helpers
+
+    /// What to send Steam's search. It finds nothing for "STAR WARS Jedi - Fallen Order™" but finds the game for
+    /// "STAR WARS Jedi Fallen Order": trademark signs go, other punctuation becomes a space. The result still has
+    /// to match `normalized` exactly.
+    static func searchTerm(_ title: String) -> String {
+        let kept = title.unicodeScalars.compactMap { s -> Character? in
+            if "™®©".unicodeScalars.contains(s) { return nil }
+            return CharacterSet.alphanumerics.contains(s) || s == "&" || s == "'" ? Character(s) : " "
+        }
+        return String(kept).split(separator: " ").joined(separator: " ")
+    }
 
     static func normalized(_ title: String) -> String {
         let stripped = title.lowercased().replacingOccurrences(of: "&", with: "and")

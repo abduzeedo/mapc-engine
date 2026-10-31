@@ -9,6 +9,12 @@ import Testing
         #expect(GameInfoService.normalized("Kena: Bridge of Spirits") != GameInfoService.normalized("Kena"))
     }
 
+    @Test func searchTermDropsWhatSteamSearchChokesOn() {
+        #expect(GameInfoService.searchTerm("STAR WARS Jedi - Fallen Order™") == "STAR WARS Jedi Fallen Order")
+        #expect(GameInfoService.searchTerm("Marvel's Guardians of the Galaxy") == "Marvel's Guardians of the Galaxy")
+        #expect(GameInfoService.searchTerm("Batman™: Arkham Knight") == "Batman Arkham Knight")
+    }
+
     @Test func parsesSteamDetails() throws {
         let json = #"""
         {"2138710":{"success":true,"data":{"short_description":"A <b>Kung Fu</b> brawler &amp; more.",
