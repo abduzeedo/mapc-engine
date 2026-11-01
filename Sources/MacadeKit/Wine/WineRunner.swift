@@ -4,12 +4,33 @@ public enum WineRunnerError: Error, LocalizedError {
     case noEngine
     case bottleMissing(BottleKind)
     case launchFailed(String)
+    /// Wine is Intel code, and Rosetta 2 isn't installed (anymore) to translate it.
+    case rosettaMissing
+    /// Files the engine needs are gone (see `Engine.missingCoreFiles`); reinstalling the engine brings them back.
+    case engineDamaged(version: String, missing: [String])
 
     public var errorDescription: String? {
         switch self {
         case .noEngine: "The game engine isn't installed yet."
         case .bottleMissing(let k): "The \(k.rawValue) environment hasn't been set up yet."
         case .launchFailed(let m): "Couldn't start the program: \(m)"
+        case .rosettaMissing:
+            "Rosetta 2 isn't installed on this Mac. Windows programs are built for Intel chips, and Rosetta translates them, so nothing can start without it."
+        case .engineDamaged(let version, _):
+            "Engine \(version) is missing files it needs, so nothing can start with it. Reinstall the engine; your games and their environments stay as they are."
+        }
+    }
+
+    /// The line `WineRunner` writes into the launch log when a launch stops before Wine starts. Not a
+    /// `[MaPC] Launch` line, so `LogDiagnosis` still reads the launch line above it.
+    public static let logPrefix = "[MaPC] Couldn't start:"
+
+    var logLine: String {
+        switch self {
+        case .rosettaMissing: "\(Self.logPrefix) Rosetta 2 isn't installed"
+        case .engineDamaged(let version, let missing): "\(Self.logPrefix) engine \(version) is missing \(missing.joined(separator: ", "))"
+        case .launchFailed(let m): "\(Self.logPrefix) \(m)"
+        default: "\(Self.logPrefix) \(errorDescription ?? "unknown error")"
         }
     }
 }
@@ -137,14 +158,26 @@ public struct WineRunner: Sendable {
         }
 
         let backend = profile.backend.resolved()
-        do { try NativeBackendDLLs.prepare(backend, engine: engine, bottle: bottle) }
-        catch {
-            try? handle.close()
-            throw WineRunnerError.launchFailed("couldn't set up \(backend.displayName): \(error.localizedDescription)")
-        }
-
         let context = "[MaPC] Launch \(ISO8601DateFormatter().string(from: Date())) engine=\(engine.version) wine=\(engine.info.wineVersion) environment=\(bottle.kind.rawValue) backend=\(backend.rawValue)\n"
         try handle.write(contentsOf: Data(context.utf8))
+        // A launch that stops here says why in its log too, so Check Last Launch and problem reports show it.
+        // Before, the log held only the line above and nothing told the user what was wrong.
+        func stop(_ error: WineRunnerError) -> WineRunnerError {
+            try? handle.write(contentsOf: Data((error.logLine + "\n").utf8))
+            try? handle.close()
+            return error
+        }
+        let missing = engine.missingCoreFiles
+        if !missing.isEmpty { throw stop(.engineDamaged(version: engine.version, missing: missing)) }
+        // Wine is Intel code. Programs MaPC runs itself (legendary, nile) may be native, so only the engine's own.
+        if program.standardizedFileURL.path.hasPrefix(engine.directory.standardizedFileURL.path + "/"),
+           !SystemCheck.rosettaIsInstalled() {
+            throw stop(.rosettaMissing)
+        }
+        do { try NativeBackendDLLs.prepare(backend, engine: engine, bottle: bottle) }
+        catch {
+            throw stop(.launchFailed("couldn't set up \(backend.displayName): \(error.localizedDescription)"))
+        }
         let process = Process()
         process.executableURL = program
         process.arguments = arguments
@@ -162,8 +195,7 @@ public struct WineRunner: Sendable {
         }
         do { try process.run() }
         catch {
-            try? handle.close()
-            throw WineRunnerError.launchFailed(error.localizedDescription)
+            throw stop(.launchFailed(error.localizedDescription))
         }
         return RunningProcess(process: process, logURL: logURL)
     }

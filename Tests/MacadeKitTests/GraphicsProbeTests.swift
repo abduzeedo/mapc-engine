@@ -102,6 +102,23 @@ func makePE(machine: UInt16 = 0x8664, imports: [String] = [], delayImports: [Str
         #expect(GraphicsProbe.scan(dir) == GraphicsProbe(uses32BitDirect3D11: true))
     }
 
+    /// PUBG keeps BattlEye four folders down, next to its game binary.
+    @Test func findsAntiCheatFolders() throws {
+        let pubg = try gameFolder(["TslGame/Binaries/Win64/TslGame.exe": big(makePE(imports: ["d3d11.dll"])),
+                                   "TslGame/Binaries/Win64/BattlEye/BEClient_x64.dll": Data()])
+        defer { try? FileManager.default.removeItem(at: pubg) }
+        #expect(GraphicsProbe.scan(pubg) == GraphicsProbe(has64BitExecutable: true, antiCheat: "BattlEye"))
+        let eac = try gameFolder(["Game.exe": big(makePE(imports: ["d3d11.dll"])),
+                                  "EasyAntiCheat/EasyAntiCheat_EOS_Setup.exe": Data()])
+        defer { try? FileManager.default.removeItem(at: eac) }
+        #expect(GraphicsProbe.scan(eac).antiCheat == "EasyAntiCheat")
+        #expect(GraphicsProbe.antiCheat(named: "start_protected_game.exe", isDirectory: false) == "EasyAntiCheat")
+        #expect(GraphicsProbe.antiCheat(named: "battleye", isDirectory: false) == nil)
+        let clean = try gameFolder(["Game.exe": big(makePE(imports: ["d3d11.dll"]))])
+        defer { try? FileManager.default.removeItem(at: clean) }
+        #expect(GraphicsProbe.scan(clean).antiCheat == nil)
+    }
+
     @Test func runtimeLoaded32BitDirect3D11IsFoundByEntryPoint() throws {
         let dir = try gameFolder(["game.exe": big(makePE(machine: 0x014c, imports: ["kernel32.dll"])) + Data("D3D11CreateDevice\0".utf8)])
         defer { try? FileManager.default.removeItem(at: dir) }

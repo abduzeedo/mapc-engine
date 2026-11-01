@@ -241,6 +241,13 @@ private func fixtureData(_ name: String) throws -> Data {
         #expect(KnownIssues.note(for: fortnite, remote: ["epic:Fortnite": "Custom"]) == "Custom")
     }
 
+    @Test func antiCheatNoteFromTheGamesFolder() {
+        let pubg = Game(store: .steam, storeID: "578080", title: "PUBG: BATTLEGROUNDS", isInstalled: true)
+        let note = KnownIssues.note(for: pubg, probe: GraphicsProbe(usesDirectX12: true, antiCheat: "BattlEye"))
+        #expect(note == KnownIssues.antiCheatNote("BattlEye"))   // ahead of the DirectX 12 note
+        #expect(KnownIssues.note(for: pubg, probe: GraphicsProbe(has64BitExecutable: true)) == nil)
+    }
+
     @Test func directX12NoteOnlyWithoutD3DMetal() {
         let witcher = Game(store: .steam, storeID: "292030", title: "The Witcher 3", isInstalled: true)
         let dx12 = GraphicsProbe(usesDirectX12: true, has64BitExecutable: true)

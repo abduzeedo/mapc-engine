@@ -180,6 +180,57 @@ import Testing
         #expect(ids(LogDiagnosis(log: "Loading EasyAntiCheat_EOS.sys", title: "Grand Theft Auto V")) == ["anti-cheat"])
     }
 
+    /// PUBG's log never names BattlEye: eight launches in one report each closed after a minute with no finding.
+    @Test func antiCheatFoundInTheGamesFolder() {
+        let log = """
+        [MaPC] Launch 2026-11-01T12:18:49Z engine=1.0.1 wine=11.18 (Staging) environment=steam backend=wined3d
+        [MaPC] Exit 2026-11-01T12:19:52Z pid=1951 status=0 reason=exit
+        """
+        let d = LogDiagnosis(log: log, probe: GraphicsProbe(has64BitExecutable: true, antiCheat: "BattlEye"))
+        #expect(ids(d) == ["anti-cheat"])
+        #expect(d.findings[0].title.contains("BattlEye"))
+        #expect(d.findings[0].evidence == "BattlEye found in the game's folder")
+        #expect(d.findings[0].action == LogDiagnosis.Action.none)
+        // GTA V's BattlEye still points to Story Mode, and a name in the log wins over the folder.
+        #expect(ids(LogDiagnosis(log: log, probe: GraphicsProbe(antiCheat: "BattlEye"), title: "Grand Theft Auto V")) == ["anti-cheat-online"])
+        let named = LogDiagnosis(log: log + "\nLoading EasyAntiCheat_EOS.sys", probe: GraphicsProbe(antiCheat: "BattlEye"))
+        #expect(named.findings.first?.evidence == "Loading EasyAntiCheat_EOS.sys")
+    }
+
+    /// Oct 30 report: engine 1.0.1 had lost ntdll.so after it was installed; Steam failed three times silently.
+    @Test func damagedEngine() {
+        let log = """
+        [MaPC] Launch 2026-10-30T08:44:13Z engine=1.0.1 wine=11.18 (Staging) environment=steam backend=dxvk
+        wine: could not load ntdll.so:
+          dlopen(~/Library/Application Support/MaPC/Engines/1.0.1/Wine Staging.app/Contents/Resources/wine/bin/../lib/wine/x86_64-unix/ntdll.so, 0x0002): tried: '…' (no such file)
+
+        [MaPC] Exit 2026-10-30T08:44:13Z pid=10873 status=1 reason=exit
+        """
+        let d = LogDiagnosis(log: log)
+        #expect(ids(d) == ["engine-damaged"])
+        #expect(d.findings[0].action == .reinstallEngine("1.0.1"))
+        #expect(d.findings[0].detail.contains("engine 1.0.1"))
+        // The same, caught by MaPC before Wine starts.
+        let caught = """
+        [MaPC] Launch 2026-11-02T09:00:00Z engine=1.0.1 wine=11.18 (Staging) environment=steam backend=dxvk
+        \(WineRunnerError.engineDamaged(version: "1.0.1", missing: ["lib/wine/x86_64-unix/ntdll.so"]).logLine)
+        """
+        #expect(ids(LogDiagnosis(log: caught)) == ["engine-damaged"])
+    }
+
+    /// Oct 30 report: Rosetta gone from a Mac where games ran days before; each log held only the Launch line.
+    @Test func rosettaMissing() {
+        let log = """
+        [MaPC] Launch 2026-10-30T16:55:15Z engine=1.0.1 wine=11.18 (Staging) environment=steam backend=dxvk
+        \(WineRunnerError.rosettaMissing.logLine)
+        """
+        let d = LogDiagnosis(log: log)
+        #expect(ids(d) == ["no-rosetta"])
+        #expect(d.findings[0].action == .installRosetta)
+        #expect(d.launch?.engine == "1.0.1")      // the launch line is still the one read
+        #expect(ids(LogDiagnosis(log: "[MaPC] Couldn't start: Bad CPU type in executable")) == ["no-rosetta"])
+    }
+
     @Test func cleanRunHasNoFindingsAndAShortExcerpt() {
         let log = (["[MaPC] Launch 2026-10-19T14:40:17Z engine=2.0.1-dxmt-test wine=11.0 environment=steam backend=dxmt"]
                    + Array(repeating: "\tVK_KHR_maintenance1 v2", count: 500)

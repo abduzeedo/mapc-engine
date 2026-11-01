@@ -9,12 +9,17 @@ private struct FakeEngine {
     init() { try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true) }
     func cleanup() { try? FileManager.default.removeItem(at: root) }
 
-    func archive(version: String, wineExit: Int = 0, withJSON: Bool = true) throws -> URL {
+    func archive(version: String, wineExit: Int = 0, withJSON: Bool = true, withNtdll: Bool = true) throws -> URL {
         let dir = root.appendingPathComponent("src-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir.appendingPathComponent("wine/bin"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: dir.appendingPathComponent("wine/lib/wine/x86_64-unix"), withIntermediateDirectories: true)
         let wine = dir.appendingPathComponent("wine/bin/wine")
         try "#!/bin/sh\necho wine-fake\nexit \(wineExit)\n".write(to: wine, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: wine.path)
+        try "#!/bin/sh\n".write(to: dir.appendingPathComponent("wine/bin/wineserver"), atomically: true, encoding: .utf8)
+        if withNtdll {
+            try Data().write(to: dir.appendingPathComponent("wine/lib/wine/x86_64-unix/ntdll.so"))
+        }
         if withJSON {
             try #"{"version":"\#(version)","wineVersion":"fake","backends":["dxvk"],"minMacOS":"15.0"}"#
                 .write(to: dir.appendingPathComponent("ENGINE.json"), atomically: true, encoding: .utf8)
@@ -52,6 +57,26 @@ private struct FakeEngine {
         // no temp files left behind
         let leftovers = (try FileManager.default.contentsOfDirectory(atPath: paths.engines.path)).filter { $0.hasPrefix(".install") }
         #expect(leftovers.isEmpty)
+    }
+
+    /// `wine --version` answers without ntdll, so an engine missing it would pass the sanity check alone.
+    @Test func anEngineWithoutNtdllIsRejected() async throws {
+        let (mgr, paths, fake) = manager(); defer { fake.cleanup() }
+        let archive = try fake.archive(version: "1.3.0", withNtdll: false)
+        await #expect(throws: EngineError.invalidEngine) { try await mgr.install(try fake.entry(for: archive, version: "1.3.0")) }
+        #expect(!FileManager.default.fileExists(atPath: paths.engine(version: "1.3.0").path))
+    }
+
+    /// A report showed an installed engine 1.0.1 whose ntdll.so had been removed after it was installed.
+    @Test func anInstalledEngineMissingCoreFilesIsDamaged() async throws {
+        let (mgr, paths, fake) = manager(); defer { fake.cleanup() }
+        let engine = try await mgr.install(try fake.entry(for: try fake.archive(version: "1.4.0"), version: "1.4.0"))
+        #expect(!engine.isDamaged && engine.missingCoreFiles.isEmpty)
+        try FileManager.default.removeItem(at: engine.wineRoot.appendingPathComponent("lib/wine/x86_64-unix/ntdll.so"))
+        let reloaded = try #require(Engine(directory: paths.engine(version: "1.4.0")))
+        #expect(reloaded.isDamaged)
+        #expect(reloaded.missingCoreFiles == ["lib/wine/x86_64-unix/ntdll.so"])
+        #expect(reloaded.isUsable)   // still listed, so the app can offer to reinstall it
     }
 
     @Test func corruptedDownloadFailsTheChecksum() async throws {
