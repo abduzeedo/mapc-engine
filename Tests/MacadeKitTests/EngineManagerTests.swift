@@ -54,6 +54,16 @@ private struct FakeEngine {
         #expect(leftovers.isEmpty)
     }
 
+    @Test func downloadReportsProgress() async throws {
+        let (mgr, _, fake) = manager(); defer { fake.cleanup() }
+        let archive = try fake.archive(version: "1.2.0")
+        let values = ProgressLog()
+        _ = try await mgr.install(try fake.entry(for: archive, version: "1.2.0")) { phase, v in if phase == .downloading { values.add(v) } }
+        #expect(values.all.contains { $0 > 0 })
+        #expect(values.all.allSatisfy { (0...1).contains($0) })
+        #expect(values.all.last ?? 0 > 0.99)
+    }
+
     @Test func corruptedDownloadFailsTheChecksum() async throws {
         let (mgr, paths, fake) = manager(); defer { fake.cleanup() }
         let archive = try fake.archive(version: "1.0.0")
@@ -100,6 +110,12 @@ private final class PhaseLog: @unchecked Sendable {
     private let lock = NSLock(); private var items: [EnginePhase] = []
     func add(_ p: EnginePhase) { lock.lock(); if items.last != p { items.append(p) }; lock.unlock() }
     var all: [EnginePhase] { lock.lock(); defer { lock.unlock() }; return items }
+}
+
+private final class ProgressLog: @unchecked Sendable {
+    private let lock = NSLock(); private var items: [Double] = []
+    func add(_ v: Double) { lock.lock(); items.append(v); lock.unlock() }
+    var all: [Double] { lock.lock(); defer { lock.unlock() }; return items }
 }
 
 @Suite struct ManifestAndStoreTests {

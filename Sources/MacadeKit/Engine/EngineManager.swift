@@ -132,13 +132,15 @@ public struct EngineManager: Sendable {
     }
 }
 
-private final class ProgressDelegate: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
+private final class ProgressDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
     let onProgress: @Sendable (Double) -> Void
+    private var observation: NSKeyValueObservation?
     init(_ onProgress: @escaping @Sendable (Double) -> Void) { self.onProgress = onProgress }
 
-    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData _: Int64,
-                    totalBytesWritten written: Int64, totalBytesExpectedToWrite total: Int64) {
-        if total > 0 { onProgress(Double(written) / Double(total)) }
+    // The async download API never calls the download-delegate callbacks, so watch the task's Progress instead.
+    func urlSession(_ session: URLSession, didCreateTask task: URLSessionTask) {
+        observation = task.progress.observe(\.fractionCompleted) { [onProgress] p, _ in
+            onProgress(min(max(p.fractionCompleted, 0), 1))
+        }
     }
-    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {}
 }
