@@ -116,6 +116,14 @@ public struct LogDiagnosis: Equatable, Sendable {
                 "The game hands its video frames from DirectX 9 to DirectX 11, which Wine doesn't support yet. It closes when a video starts; there's no setting that fixes this.",
                 .none, e)
         }
+        // Resident Evil Requiem: GStreamer was installed without an H.264 decoder, so the intro MP4 can't open and
+        // the game shows its own "Failed to create SourceReader" dialog and quits. Wine logs the same line for
+        // other formats ("... doesn't support WMV decoding"), and when GStreamer can't be loaded at all.
+        if let e = line("GStreamer doesn't support") {
+            add("video-codec", "The game's videos can't be decoded",
+                "GStreamer, which plays game videos, can't decode this game's video format here. Quit Steam and the game, install the official GStreamer runtime from its website with all its components (see Settings › Game videos), then try again.",
+                .none, e)
+        }
         if !found.contains(where: { $0.id == "vulkan-32bit" || $0.id == "wined3d-level" }),
            let e = line("Failed to initialize graphics") ?? line("Failed to create D3D11 device") ?? line("D3D11CoreCreateDevice: Failed") {
             add("no-device", "The game couldn't start its graphics",
@@ -144,7 +152,9 @@ public struct LogDiagnosis: Equatable, Sendable {
                 .reportProblem, e)
         }
         // Mafia II: Definitive Edition's launcher (Epic) is a .NET program; Wine stops it before it opens.
-        if let e = line("IL-only binary") {
+        // Capcom games (Resident Evil Requiem) ship a .NET InstallerMessage.exe that Steam runs first; the game itself
+        // isn't .NET and runs fine without it.
+        if let e = lines.last(where: { $0.contains("IL-only binary") && !$0.contains("InstallerMessage.exe") }) {
             add("needs-dotnet", "The game needs .NET",
                 "Its launcher is a .NET program, and this environment doesn't have Wine Mono, Wine's open-source .NET runtime. Installing it there lets the launcher open.",
                 .installDotNet, e)
