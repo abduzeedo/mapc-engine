@@ -88,6 +88,11 @@ import Testing
         try FileManager.default.createDirectory(at: steam.bottle.driveC.appendingPathComponent("windows"), withIntermediateDirectories: true)
         try "#!/bin/sh\nprintf '%s\\n' \"$@\"\n".write(to: engine.wine, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: engine.wine.path)
+        for file in Engine.coreFiles where file != "bin/wine" {
+            let url = engine.wineRoot.appendingPathComponent(file)
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data().write(to: url)
+        }
         var profile = LaunchProfile()
         profile.extraArguments = ["-dx11", "argument with spaces"]
         let process = try steam.play(Game(store: .steam, storeID: "123", title: "Test", isInstalled: true), engine: engine, profile: profile)
