@@ -72,7 +72,8 @@ public struct EngineManager: Sendable {
         try fm.createDirectory(at: extracted, withIntermediateDirectories: true)
         let tar = try await ProcessRunner.run(URL(fileURLWithPath: "/usr/bin/tar"), ["-xJf", archive.path, "-C", extracted.path])
         guard tar.succeeded else { throw EngineError.extractFailed }
-        guard let candidate = Engine(directory: extracted), candidate.version == entry.version, candidate.isUsable else {
+        guard let candidate = Engine(directory: extracted), candidate.version == entry.version, candidate.isUsable,
+              !candidate.isDamaged else {
             throw EngineError.invalidEngine
         }
 
@@ -88,8 +89,9 @@ public struct EngineManager: Sendable {
         }
         _ = try? await ProcessRunner.run(URL(fileURLWithPath: "/usr/bin/xattr"), ["-dr", "com.apple.quarantine", destination.path])
 
-        // 5. Sanity check: the engine has to start.
-        guard let engine = Engine(directory: destination),
+        // 5. Sanity check: the engine has to start. `wine --version` answers before Wine loads ntdll, so the
+        // core files are checked too.
+        guard let engine = Engine(directory: destination), !engine.isDamaged,
               let check = try? await ProcessRunner.run(engine.wine, ["--version"], environment: ["HOME": NSHomeDirectory()]),
               check.succeeded else {
             try? fm.removeItem(at: destination)

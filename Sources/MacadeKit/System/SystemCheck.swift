@@ -36,6 +36,21 @@ public struct SystemCheck: Sendable {
         )
     }
 
+    /// Whether Rosetta 2 can run Intel code right now, without waiting: Wine needs it for every launch. The runtime
+    /// file answers at once; only when it's missing is Intel code actually tried, in case macOS moved the file.
+    /// A Mac reported "Rosetta missing" after games had run on it days before (a macOS update or a cleanup tool).
+    public static func rosettaIsInstalled() -> Bool {
+        if FileManager.default.fileExists(atPath: "/Library/Apple/usr/libexec/oah/libRosettaRuntime") { return true }
+        let probe = Process()
+        probe.executableURL = URL(fileURLWithPath: "/usr/bin/arch")
+        probe.arguments = ["-x86_64", "/usr/bin/true"]
+        probe.standardOutput = FileHandle.nullDevice
+        probe.standardError = FileHandle.nullDevice
+        do { try probe.run() } catch { return false }
+        probe.waitUntilExit()
+        return probe.terminationStatus == 0
+    }
+
     public func rosettaStatus() async -> SystemReport.Status {
         let result = try? await ProcessRunner.run(URL(fileURLWithPath: "/usr/bin/arch"), ["-x86_64", "/usr/bin/true"])
         return result?.succeeded == true ? .ok : .failed("Rosetta 2 is not installed.")

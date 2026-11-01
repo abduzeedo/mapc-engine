@@ -64,6 +64,20 @@ public struct Engine: Sendable, Equatable {
     }
 
     public var isUsable: Bool { FileManager.default.isExecutableFile(atPath: wine.path) }
+
+    /// Files, relative to the Wine root, without which no Windows program starts. A report showed engine 1.0.1
+    /// without `ntdll.so` (something outside MaPC had removed it): `wine` was still there, so the engine looked
+    /// installed and every launch failed with "could not load ntdll.so".
+    public static let coreFiles = ["bin/wine", "bin/wineserver", "lib/wine/x86_64-unix/ntdll.so"]
+
+    /// Core files missing from this engine (see `coreFiles`); empty when it's whole.
+    public var missingCoreFiles: [String] {
+        let root = wineRoot
+        return Self.coreFiles.filter { !FileManager.default.fileExists(atPath: root.appendingPathComponent($0).path) }
+    }
+
+    /// Files the engine needs are gone, so it has to be reinstalled.
+    public var isDamaged: Bool { !missingCoreFiles.isEmpty }
 }
 
 public struct EngineLocator: Sendable {

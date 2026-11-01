@@ -10,11 +10,31 @@ public struct GraphicsProbe: Codable, Sendable, Equatable {
     /// Only 32-bit game binaries, and they use Direct3D 10 or 11. Engine 1.x can't create a device for these:
     /// 32-bit Vulkan doesn't work under Wine's WoW64 on MoltenVK, and Wine's OpenGL renderer stops below 10_0.
     public var uses32BitDirect3D11 = false
+    /// Kernel-level anti-cheat shipped with the game ("BattlEye", "EasyAntiCheat"), found by its folder or
+    /// installer. It can't run on a Mac. PUBG's launch log never names its BattlEye, so the folder is the only clue.
+    public var antiCheat: String?
 
-    public init(usesDirectX12: Bool = false, has64BitExecutable: Bool = false, uses32BitDirect3D11: Bool = false) {
+    public init(usesDirectX12: Bool = false, has64BitExecutable: Bool = false, uses32BitDirect3D11: Bool = false,
+                antiCheat: String? = nil) {
         self.usesDirectX12 = usesDirectX12
         self.has64BitExecutable = has64BitExecutable
         self.uses32BitDirect3D11 = uses32BitDirect3D11
+        self.antiCheat = antiCheat
+    }
+
+    /// The anti-cheat a folder or file belongs to, by its name (lowercased): BattlEye's folder and service,
+    /// Easy Anti-Cheat's folders, setup and the launcher it starts games through.
+    static func antiCheat(named name: String, isDirectory: Bool) -> String? {
+        if isDirectory {
+            if name == "battleye" { return "BattlEye" }
+            if name == "easyanticheat" || name == "easyanticheat_eos" { return "EasyAntiCheat" }
+            return nil
+        }
+        if name == "beservice.exe" || name == "beservice_x64.exe" { return "BattlEye" }
+        if ["easyanticheat_setup.exe", "easyanticheat_eos_setup.exe", "start_protected_game.exe"].contains(name) {
+            return "EasyAntiCheat"
+        }
+        return nil
     }
 
     /// Folders that hold installers, crash reporters and anti-cheat rather than the game.
@@ -44,6 +64,9 @@ public struct GraphicsProbe: Codable, Sendable, Equatable {
         for case let url as URL in walker {
             let name = url.lastPathComponent.lowercased()
             let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .fileSizeKey])
+            if probe.antiCheat == nil {
+                probe.antiCheat = antiCheat(named: name, isDirectory: values?.isDirectory == true)
+            }
             if values?.isDirectory == true {
                 let depth = url.standardizedFileURL.pathComponents.count - base
                 if depth >= maxDepth || skippedFolders.contains(where: name.contains) { walker.skipDescendants() }

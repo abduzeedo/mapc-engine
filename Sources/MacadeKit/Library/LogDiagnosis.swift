@@ -15,6 +15,10 @@ public struct LogDiagnosis: Equatable, Sendable {
         case updateGame
         /// The game's program is .NET and the environment has no runtime: install Wine Mono (`WineMono`) into it.
         case installDotNet
+        /// Files engine `version` needs are gone; install the same version again over it.
+        case reinstallEngine(String)
+        /// Rosetta 2 is missing, so Wine (Intel code) can't run. Install it after the user agrees.
+        case installRosetta
         case reportProblem
         case none
     }
@@ -79,6 +83,19 @@ public struct LogDiagnosis: Equatable, Sendable {
         }
         func line(_ needle: String) -> String? { lines.last { $0.localizedCaseInsensitiveContains(needle) } }
 
+        // Nothing else in the log matters when Wine itself couldn't start.
+        if let e = line("could not load ntdll.so") ?? line("\(WineRunnerError.logPrefix) engine") {
+            // Seen with engine 1.0.1: ntdll.so was removed from the engine after it was installed.
+            let version = launch?.engine
+            add("engine-damaged", "The game engine is damaged",
+                "Files that \(version.map { "engine \($0)" } ?? "the engine") needs are missing from your Mac, so nothing can start with it. Reinstalling the engine brings them back; your games and their environments stay as they are.",
+                version.map { .reinstallEngine($0) } ?? .reportProblem, e)
+        }
+        if let e = line("\(WineRunnerError.logPrefix) Rosetta") ?? line("Bad CPU type in executable") {
+            add("no-rosetta", "Rosetta 2 isn't installed",
+                "Windows programs are built for Intel chips, and Rosetta translates them for your Mac. It was removed or never installed, so nothing can start until it's installed again.",
+                .installRosetta, e)
+        }
         if let e = line("Only external memory handle type VK_EXTERNAL_MEMORY_HANDLE_TYPE_MTLBUFFER") {
             add("vulkan-32bit", "32-bit DirectX 11 can't use Vulkan on a Mac",
                 "The game is 32-bit and asked DXVK (Vulkan) for a DirectX 11 device, which MoltenVK can't create for 32-bit programs. DXMT can.",
@@ -122,18 +139,26 @@ public struct LogDiagnosis: Equatable, Sendable {
                 "Its Direct3D device couldn't be created with the current Graphics option. Try another one.",
                 probe?.uses32BitDirect3D11 == true ? (dxmtAvailable ? .useBackend(.dxmt) : .installExtendedEngine) : .useBackend(.dxvk), e)
         }
-        for name in ["EasyAntiCheat", "BattlEye", "BEService", "vgk.sys", "Ricochet", "EAAntiCheat", "nProtect", "XIGNCODE"] {
-            if let e = line(name) {
-                if name == "BattlEye" || name == "BEService", Self.isGTAV(title: title, lines: lines) {
-                    // GTA V's BattlEye (since September 2024) guards GTA Online only; Story Mode runs without it.
-                    add("anti-cheat-online", "GTA Online can't run on a Mac, but Story Mode can",
-                        "GTA Online needs BattlEye, kernel-level anti-cheat that needs Windows itself. Story Mode doesn't: choose Story Mode when the game starts. If the game doesn't start at all, anti-cheat isn't the reason.",
-                        .none, e)
-                } else {
-                    add("anti-cheat", "The game uses anti-cheat that doesn't run on a Mac",
-                        "Kernel-level anti-cheat needs Windows itself. There's no setting that fixes this.", .none, e)
-                }
-                break
+        // Anti-cheat named in the log, or else found in the game's folder: PUBG starts BattlEye without the log
+        // ever naming it, and a report showed eight launches that each closed after a minute with no finding.
+        let named = ["EasyAntiCheat", "BattlEye", "BEService", "vgk.sys", "Ricochet", "EAAntiCheat", "nProtect", "XIGNCODE"]
+            .first { line($0) != nil }
+        if let name = named ?? probe?.antiCheat {
+            let logLine = named.flatMap { line($0) }
+            let evidence = logLine ?? "\(name) found in the game's folder"
+            if name == "BattlEye" || name == "BEService", Self.isGTAV(title: title, lines: lines) {
+                // GTA V's BattlEye (since September 2024) guards GTA Online only; Story Mode runs without it.
+                add("anti-cheat-online", "GTA Online can't run on a Mac, but Story Mode can",
+                    "GTA Online needs BattlEye, kernel-level anti-cheat that needs Windows itself. Story Mode doesn't: choose Story Mode when the game starts. If the game doesn't start at all, anti-cheat isn't the reason.",
+                    .none, evidence)
+            } else if logLine != nil {
+                add("anti-cheat", "The game uses anti-cheat that doesn't run on a Mac",
+                    "Kernel-level anti-cheat needs Windows itself. There's no setting that fixes this.", .none, evidence)
+            } else {
+                // Only the folder: some games ship anti-cheat for online modes and play offline without it.
+                add("anti-cheat", "The game includes \(name) anti-cheat",
+                    "\(name) needs Windows itself and doesn't run on a Mac. If the game closes soon after it starts, this is the likely reason, and no setting fixes it. Some games use it only for online play.",
+                    .none, evidence)
             }
         }
         if let e = lines.last(where: { $0.contains("err:module:import_dll") && $0.contains("not found") && !Self.isSteamClientLine($0) }) {
