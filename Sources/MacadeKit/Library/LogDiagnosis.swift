@@ -161,7 +161,9 @@ public struct LogDiagnosis: Equatable, Sendable {
                     .none, evidence)
             }
         }
-        if let e = lines.last(where: { $0.contains("err:module:import_dll") && $0.contains("not found") && !Self.isSteamClientLine($0) }) {
+        if let e = lines.last(where: {
+            $0.contains("err:module:import_dll") && $0.contains("not found") && !Self.isSteamClientLine($0) && !Self.isOptionalGalaxyImport($0)
+        }) {
             let dll = e.range(of: #"Library ([^\s]+) "#, options: .regularExpression)
                 .map { String(e[$0]).replacingOccurrences(of: "Library ", with: "").trimmingCharacters(in: .whitespaces) }
             add("missing-dll", "A Windows file the game needs is missing",
@@ -222,6 +224,14 @@ public struct LogDiagnosis: Equatable, Sendable {
     }
 
     // MARK: Helpers
+
+    /// A `steam_api` that can't load GOG's Galaxy SDK. Unreal's optional Steam plugin can fail this way: Caravan
+    /// SandWitch (Amazon) logged it and still ran for 11 minutes. If the game itself needs `steam_api`, Wine logs a
+    /// second line naming the game, and that one still counts.
+    static func isOptionalGalaxyImport(_ line: String) -> Bool {
+        let lower = line.lowercased()
+        return lower.contains("library galaxy") && (lower.contains("steam_api.dll") || lower.contains("steam_api64.dll"))
+    }
 
     /// A Wine line about one of Steam's own programs (its web helper, service, overlay). A game started in a fresh
     /// Steam shares Steam's log, so their errors aren't the game's. Games themselves live in `Steam\steamapps`.
