@@ -155,6 +155,17 @@ import Testing
         #expect(ids(LogDiagnosis(log: helper + "\n" + game)) == ["missing-dll"])
     }
 
+    @Test func galaxyMissingFromSteamAPIIsNotAMissingFile() {
+        let shim = "00d4:err:module:import_dll Library Galaxy64.dll (which is needed by L\"Z:\\\\Games\\\\Caravan SandWitch\\\\Engine\\\\Binaries\\\\ThirdParty\\\\Steamworks\\\\Steamv157\\\\Win64\\\\steam_api64.dll\") not found"
+        #expect(ids(LogDiagnosis(log: shim)).isEmpty)
+        // The same failure, when the game can't start without steam_api.
+        let game = "00d4:err:module:import_dll Library steam_api64.dll (which is needed by L\"Z:\\\\Games\\\\Game\\\\game.exe\") not found"
+        #expect(ids(LogDiagnosis(log: shim + "\n" + game)) == ["missing-dll"])
+        // Galaxy missing for the game itself is still a missing file.
+        let direct = "00d4:err:module:import_dll Library Galaxy64.dll (which is needed by L\"Z:\\\\Games\\\\Game\\\\game.exe\") not found"
+        #expect(ids(LogDiagnosis(log: direct)) == ["missing-dll"])
+    }
+
     @Test func antiCheatAndGenericCrash() {
         #expect(ids(LogDiagnosis(log: "Loading EasyAntiCheat_EOS.sys")) == ["anti-cheat"])
         let crash = "wine: Unhandled page fault on write access to 0000000000000006 at address 000000014004EC2F (thread 0598)"
