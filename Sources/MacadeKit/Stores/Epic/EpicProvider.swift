@@ -76,9 +76,35 @@ public struct EpicProvider: StoreProvider, Sendable {
     public func refresh() async throws -> [Game] {
         guard isLegendaryInstalled else { throw EpicError.legendaryMissing }
         guard isSignedIn else { throw EpicError.notSignedIn }
-        async let list = json(["list", "--platform", "Windows", "--json"])
+        async let list = libraryList()
         async let installed = json(["list-installed", "--json"])
         return try LegendaryParser.games(listJSON: try await list, installedJSON: try await installed)
+    }
+
+    /// Epic's answer for a big library (1,059 items in a 2026-11-09 report) takes longer than legendary's default
+    /// 10 s API timeout, so the list failed for that account while a 93-game one worked. Wait up to a minute, and
+    /// try once more, since the server can also be slow once. Legendary's output goes to `Logs/epic/`.
+    func libraryList() async throws -> Data {
+        let args = ["--api-timeout", "\(Self.apiTimeout)", "list", "--platform", "Windows", "--json"]
+        do { return try await json(args, logTo: try? runner.logs.newLog(for: kind.rawValue)) }
+        catch EpicError.commandFailed {
+            return try await json(args, logTo: try? runner.logs.newLog(for: kind.rawValue))
+        }
+    }
+
+    static let apiTimeout = 60
+
+    /// What to tell the user from the end of legendary's error output: a timeout says so, anything else names the
+    /// last error line (an exception, "Error:"), cut short. Only that line is shown, never the whole output.
+    static func failureSummary(fromLog log: String) -> String {
+        let base = "Couldn't read your Epic library."
+        if log.contains("ReadTimeout") || log.contains("timed out") {
+            return base + " Epic took too long to answer. Try again in a minute."
+        }
+        let last = log.split(whereSeparator: \.isNewline).last { $0.contains("Error") || $0.contains("Exception") }
+        guard let last else { return base }
+        let line = last.trimmingCharacters(in: .whitespaces)
+        return base + " " + (line.count > 160 ? String(line.prefix(160)) + "…" : line)
     }
 
     /// Games already downloaded, readable without the network.
@@ -145,7 +171,7 @@ public struct EpicProvider: StoreProvider, Sendable {
         return try await ProcessRunner.run(legendary, args, environment: environment)
     }
 
-    private func json(_ args: [String]) async throws -> Data {
+    private func json(_ args: [String], logTo log: URL? = nil) async throws -> Data {
         guard isLegendaryInstalled else { throw EpicError.legendaryMissing }
         // Capture stdout only: legendary logs to stderr and the JSON must stay clean.
         let process = Process()
@@ -155,16 +181,23 @@ public struct EpicProvider: StoreProvider, Sendable {
         let out = Pipe()
         process.standardOutput = out
         // Nothing reads stderr, so it can't be a pipe: once legendary writes ~64 KB there it would block forever.
-        process.standardError = FileHandle.nullDevice
+        // It goes to the run's log file when there is one (the command's arguments aren't written, only its name).
+        let logHandle = log.flatMap { try? FileHandle(forWritingTo: $0) }
+        process.standardError = logHandle ?? FileHandle.nullDevice
+        let stamp = { ISO8601DateFormatter().string(from: Date()) }
+        let command = args.first { !$0.hasPrefix("-") && Int($0) == nil } ?? "?"
+        try? logHandle?.write(contentsOf: Data("[MaPC] Launch \(stamp()) legendary=\(Self.legendaryVersion) command=\(command)\n".utf8))
         return try await withCheckedThrowingContinuation { cont in
             DispatchQueue.global().async {
+                defer { try? logHandle?.close() }
                 do {
                     try process.run()
                     let data = out.fileHandleForReading.readDataToEndOfFile()
                     process.waitUntilExit()
-                    process.terminationStatus == 0
-                        ? cont.resume(returning: data)
-                        : cont.resume(throwing: EpicError.commandFailed("Couldn't read your Epic library."))
+                    try? logHandle?.write(contentsOf: Data("\n[MaPC] Exit \(stamp()) status=\(process.terminationStatus)\n".utf8))
+                    if process.terminationStatus == 0 { return cont.resume(returning: data) }
+                    let text = log.map { LogStore.tail(of: $0, bytes: 8192) } ?? ""
+                    cont.resume(throwing: EpicError.commandFailed(Self.failureSummary(fromLog: text)))
                 } catch { cont.resume(throwing: error) }
             }
         }
