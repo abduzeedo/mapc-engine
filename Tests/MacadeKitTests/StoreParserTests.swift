@@ -292,6 +292,50 @@ import Testing
         #expect(FileManager.default.fileExists(atPath: marker.path))
     }
 
+    /// A report from a Mac whose Epic environment was never made had no log: the failure was shown and forgotten.
+    @Test func aFailedEnvironmentLeavesALogWithWinesOutput() async throws {
+        let home = temp()
+        defer { try? FileManager.default.removeItem(at: home) }
+        let paths = Paths(home: home)
+        let engine = try makeTestEngine(home, version: "2.0.1", backends: ["dxvk"], d3dMetal: false)
+        try """
+        #!/bin/sh
+        echo "err:module:import_dll Library libfoo.dylib not found" >&2
+        exit 3
+        """.write(to: engine.wine, atomically: true, encoding: .utf8)
+        do {
+            try await BottleManager(paths: paths).prepareForPlay(.epic, engine: engine)
+            Issue.record("creating the environment should have failed")
+        } catch {
+            #expect("\(error)".contains("create the epic environment"))
+        }
+        let log = try #require(LogStore(paths: paths).logs(for: "epic-setup").first)
+        let text = try String(contentsOf: log, encoding: .utf8)
+        #expect(text.contains("Create epic environment engine=2.0.1"))
+        #expect(text.contains("status 3"))
+        #expect(text.contains("libfoo.dylib not found"))
+    }
+
+    @Test func aSuccessfulEnvironmentLeavesNoSetupLog() async throws {
+        let home = temp()
+        defer { try? FileManager.default.removeItem(at: home) }
+        let paths = Paths(home: home)
+        try await BottleManager(paths: paths).prepareForPlay(.epic, engine: engineWithFakeWine(in: home))
+        #expect(LogStore(paths: paths).logs(for: "epic-setup").isEmpty)
+    }
+
+    @Test func aLongSetupOutputKeepsItsEnd() throws {
+        let home = temp()
+        defer { try? FileManager.default.removeItem(at: home) }
+        let paths = Paths(home: home)
+        let engine = try engineWithFakeWine(in: home)
+        let output = String(repeating: "noise line\n", count: 20_000) + "the real error\n"
+        let log = try #require(BottleManager(paths: paths).recordSetupFailure(.gog, engine: engine, detail: "x", output: output))
+        let text = try String(contentsOf: log, encoding: .utf8)
+        #expect(text.hasSuffix("the real error\n\n"))
+        #expect(text.utf8.count < BottleManager.setupLogBytes + 1024)
+    }
+
     @Test func launcherStoresKeepTheirOwnSetup() async throws {
         let home = temp()
         defer { try? FileManager.default.removeItem(at: home) }

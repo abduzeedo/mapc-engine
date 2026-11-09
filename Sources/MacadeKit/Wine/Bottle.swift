@@ -52,14 +52,41 @@ public struct BottleManager: Sendable {
         if bottle.exists { return bottle }
         try FileManager.default.createDirectory(at: bottle.url, withIntermediateDirectories: true)
         let env = WineRunner.environment(bottle: bottle, profile: LaunchProfile())
-        let boot = try await ProcessRunner.run(engine.wine, ["wineboot", "--init"], environment: env)
-        guard boot.succeeded, bottle.exists else { throw WineRunnerError.launchFailed("couldn't create the \(kind.rawValue) environment") }
+        let boot: ProcessResult
+        do {
+            boot = try await ProcessRunner.run(engine.wine, ["wineboot", "--init"], environment: env)
+        } catch {
+            recordSetupFailure(kind, engine: engine, detail: "wine could not be started: \(error)")
+            throw error
+        }
+        guard boot.succeeded, bottle.exists else {
+            recordSetupFailure(kind, engine: engine, detail: "wineboot --init exited with status \(boot.status)"
+                               + (bottle.exists ? "" : "; no Windows folder was created"), output: boot.output)
+            throw WineRunnerError.launchFailed("couldn't create the \(kind.rawValue) environment")
+        }
         // Command behaves like Ctrl, as Mac users expect in games.
         _ = try await ProcessRunner.run(
             engine.wine, ["reg", "add", #"HKCU\Software\Wine\Mac Driver"#, "/v", "LeftCommandIsCtrl", "/d", "y", "/f"],
             environment: env)
         return bottle
     }
+
+    /// Why creating an environment failed, as `Logs/<store>-setup/<time>.log`. The error on screen says only that
+    /// it failed, and nothing else was written: a report from a Mac whose Epic environment never got made had no
+    /// log at all (2026-11-08). Problem reports pick up every folder under `Logs`. Returns the log, or nil if it
+    /// couldn't be written.
+    @discardableResult
+    func recordSetupFailure(_ kind: BottleKind, engine: Engine, detail: String, output: String = "",
+                            now: Date = Date()) -> URL? {
+        guard let log = try? LogStore(paths: paths).newLog(for: "\(kind.rawValue)-setup", now: now) else { return nil }
+        // The end of the output is where Wine says what went wrong.
+        let kept = output.utf8.count > Self.setupLogBytes ? "[…]\n" + String(decoding: Array(output.utf8.suffix(Self.setupLogBytes)), as: UTF8.self) : output
+        let text = "[MaPC] Create \(kind.rawValue) environment engine=\(engine.version): \(detail)\n\(kept)\n"
+        guard (try? text.write(to: log, atomically: true, encoding: .utf8)) != nil else { return nil }
+        return log
+    }
+
+    static let setupLogBytes = 64 << 10
 
     /// Stores whose environment holds only games, so nothing but a first Play creates it: Epic and GOG. Steam, Ubisoft
     /// and EA create theirs when their launcher is set up, and an empty one would hide that the launcher is missing.
