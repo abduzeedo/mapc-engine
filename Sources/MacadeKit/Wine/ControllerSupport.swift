@@ -72,21 +72,22 @@ public enum ControllerSupport {
                     + "rightshoulder:b7,rightstick:b14,righttrigger:a4,rightx:a2,righty:a3,start:b11,x:b3,y:b4"),
         // Xbox Wireless Controller 045E:0B4F (the "Nano"), firmware 6.19 = version 0x0619. Wine listed it as a plain
         // joystick (no XInput). Indices read off Wine's own controller panel on a real pad: the left stick is axes
-        // 0 and 2, the right stick 4 and 5, the D-pad is hat 0. Triggers did not register there; 6 and 7 rest at zero,
-        // so they are the best guess (unverified).
+        // 0 and 2, the right stick 4 and 5, the D-pad is hat 0. The triggers are axes 6 and 7, with LT on 7 and RT on 6
+        // (Bluetooth Xbox pads put RT on Accelerator, which sorts before LT on Brake). Verified on a real pad in a Steam
+        // game on 2026-11-09 after the first guess (LT 6, RT 7) turned out to be swapped.
         Mapping(name: "Xbox Wireless Controller",
                 guids: ["03000000" + "5e040000" + "4f0b0000" + "19060000",
                         "05000000" + "5e040000" + "4f0b0000" + "19060000",
                         "03000000" + "5e040000" + "4f0b0000" + "00000000",
                         "05000000" + "5e040000" + "4f0b0000" + "00000000"],
                 layout: "a:b0,b:b2,back:b13,dpdown:h0.4,dpleft:h0.8,dpright:h0.2,dpup:h0.1,guide:b15,leftshoulder:b9,"
-                    + "leftstick:b16,lefttrigger:a6,leftx:a0,lefty:a2,rightshoulder:b10,rightstick:b17,righttrigger:a7,"
+                    + "leftstick:b16,lefttrigger:a7,leftx:a0,lefty:a2,rightshoulder:b10,rightstick:b17,righttrigger:a6,"
                     + "rightx:a4,righty:a5,start:b14,x:b6,y:b7"),
     ]
 
     /// Bump when `sdlMappings` or the way they are delivered changes, so every bottle gets `applyControllerMappings`
-    /// again. 2: mappings moved from the registry to a file (see `mappingsKey`). 3: Xbox Wireless Controller 0B4F.
-    public static let sdlMappingsVersion = 3
+    /// again. 2: mappings moved from the registry to a file (see `mappingsKey`). 3: Xbox Wireless Controller 0B4F. 4: its triggers swapped (LT a7, RT a6).
+    public static let sdlMappingsVersion = 4
 
     /// Where MaPC 1.1.15 wrote the mappings. Don't write here: Wine's `sdl_bus_load_mappings` (still the same in
     /// Wine 11 and master) copies each value into the wrong slot of its array, so any REG_SZ value under this key

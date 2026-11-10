@@ -96,4 +96,38 @@ import Testing
         #expect(s.appliedControllerCompat == nil)
         #expect(s.appliedControllerMappings == nil)
     }
+
+    /// Parses a layout into target -> source, e.g. "lefttrigger" -> "a7".
+    private func bindings(_ layout: String) -> [(target: String, source: String)] {
+        layout.split(separator: ",").map { pair in
+            let parts = pair.split(separator: ":", maxSplits: 1).map(String.init)
+            return (parts[0], parts[1])
+        }
+    }
+
+    @Test func everyMappingBindsAllTheStandardControls() {
+        let required = ["a", "b", "x", "y", "back", "start", "guide", "leftshoulder", "rightshoulder", "leftstick", "rightstick",
+                        "lefttrigger", "righttrigger", "leftx", "lefty", "rightx", "righty",
+                        "dpup", "dpdown", "dpleft", "dpright"]
+        for mapping in ControllerSupport.sdlMappings {
+            let targets = Set(bindings(mapping.layout).map(\.target))
+            for name in required { #expect(targets.contains(name), "\(mapping.name) lacks \(name)") }
+        }
+    }
+
+    @Test func noSourceIsBoundToTwoTargets() {
+        for mapping in ControllerSupport.sdlMappings {
+            // +aN and -aN are the two halves of an axis; a plain or inverted aN uses the whole axis.
+            let sources = bindings(mapping.layout).map { $0.source.trimmingCharacters(in: CharacterSet(charactersIn: "~")) }
+            #expect(Set(sources).count == sources.count, "\(mapping.name) binds a source twice")
+        }
+    }
+
+    @Test func xboxWirelessNanoHasItsMeasuredTriggers() throws {
+        let nano = try #require(ControllerSupport.sdlMappings.first { $0.guids.contains { $0.contains("4f0b") } })
+        let layout = bindings(nano.layout)
+        #expect(layout.first { $0.target == "lefttrigger" }?.source == "a7")
+        #expect(layout.first { $0.target == "righttrigger" }?.source == "a6")
+        #expect(ControllerSupport.sdlMappingsVersion >= 4)
+    }
 }
