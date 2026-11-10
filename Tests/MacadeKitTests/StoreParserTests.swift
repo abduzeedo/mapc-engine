@@ -400,3 +400,68 @@ import Testing
         #expect(!FileManager.default.fileExists(atPath: gog.manifestFile(id: "42").path))
     }
 }
+
+@Suite struct SteamInstallerTests {
+    private func temp() -> URL {
+        FileManager.default.temporaryDirectory.appendingPathComponent("macade-steam-\(UUID().uuidString)")
+    }
+
+    /// An engine whose `wine` runs `script` (sh) instead of Wine.
+    private func engine(in root: URL, script: String) throws -> Engine {
+        let engine = try makeTestEngine(root, version: "1.0.0", backends: ["dxvk"], d3dMetal: false)
+        try "#!/bin/sh\n\(script)\n".write(to: engine.wine, atomically: true, encoding: .utf8)
+        return engine
+    }
+
+    private func installer(in root: URL, contents: Data) throws -> URL {
+        let file = root.appendingPathComponent("SteamSetup.exe")
+        try contents.write(to: file)
+        return file
+    }
+
+    private func setupLog(_ paths: Paths) throws -> String {
+        let log = try #require(LogStore(paths: paths).logs(for: "steam-setup").first)
+        return try String(contentsOf: log, encoding: .utf8)
+    }
+
+    @Test func aDownloadThatIsntAProgramIsLoggedAndNotRun() async throws {
+        let home = temp()
+        defer { try? FileManager.default.removeItem(at: home) }
+        let paths = Paths(home: home)
+        let steam = SteamProvider(paths: paths)
+        let engine = try engine(in: home, script: "touch \"$WINEPREFIX/ran\"; exit 0")
+        let file = try installer(in: home, contents: Data("<html>blocked</html>".utf8))
+        await #expect(throws: WineRunnerError.self) { try await steam.runInstaller(file, engine: engine) }
+        #expect(!FileManager.default.fileExists(atPath: steam.bottle.url.appendingPathComponent("ran").path))
+        let text = try setupLog(paths)
+        #expect(text.hasPrefix("[MaPC] Install Steam engine=1.0.0"))
+        #expect(text.contains("isn't a Windows program"))
+        #expect(text.contains("<html>blocked"))
+    }
+
+    @Test func anInstallerThatLeavesNoSteamIsLoggedWithItsOutput() async throws {
+        let home = temp()
+        defer { try? FileManager.default.removeItem(at: home) }
+        let paths = Paths(home: home)
+        let steam = SteamProvider(paths: paths)
+        let engine = try engine(in: home, script: "mkdir -p \"$WINEPREFIX/drive_c/Program Files (x86)\"; echo 'err:module:import_dll Library X not found'; exit 3")
+        let file = try installer(in: home, contents: Data("MZ fake".utf8))
+        await #expect(throws: WineRunnerError.self) { try await steam.runInstaller(file, engine: engine) }
+        let text = try setupLog(paths)
+        #expect(text.contains("exited with status 3"))
+        #expect(text.contains("No Steam folder in Program Files (x86)"))
+        #expect(text.contains("Library X not found"))
+    }
+
+    @Test func aWorkingInstallerLeavesNoLog() async throws {
+        let home = temp()
+        defer { try? FileManager.default.removeItem(at: home) }
+        let paths = Paths(home: home)
+        let steam = SteamProvider(paths: paths)
+        let engine = try engine(in: home, script: "d=\"$WINEPREFIX/drive_c/Program Files (x86)/Steam\"; mkdir -p \"$d\"; touch \"$d/steam.exe\"; exit 0")
+        let file = try installer(in: home, contents: Data("MZ fake".utf8))
+        try await steam.runInstaller(file, engine: engine)
+        #expect(steam.isSteamInstalled)
+        #expect(LogStore(paths: paths).logs(for: "steam-setup").isEmpty)
+    }
+}

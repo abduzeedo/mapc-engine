@@ -77,12 +77,12 @@ public struct BottleManager: Sendable {
     /// log at all (2026-11-08). Problem reports pick up every folder under `Logs`. Returns the log, or nil if it
     /// couldn't be written.
     @discardableResult
-    func recordSetupFailure(_ kind: BottleKind, engine: Engine, detail: String, output: String = "",
+    func recordSetupFailure(_ kind: BottleKind, engine: Engine, step: String? = nil, detail: String, output: String = "",
                             now: Date = Date()) -> URL? {
         guard let log = try? LogStore(paths: paths).newLog(for: "\(kind.rawValue)-setup", now: now) else { return nil }
         // The end of the output is where Wine says what went wrong.
         let kept = output.utf8.count > Self.setupLogBytes ? "[…]\n" + String(decoding: Array(output.utf8.suffix(Self.setupLogBytes)), as: UTF8.self) : output
-        let text = "[MaPC] Create \(kind.rawValue) environment engine=\(engine.version): \(detail)\n\(kept)\n"
+        let text = "[MaPC] \(step ?? "Create \(kind.rawValue) environment") engine=\(engine.version): \(detail)\n\(kept)\n"
         guard (try? text.write(to: log, atomically: true, encoding: .utf8)) != nil else { return nil }
         return log
     }
