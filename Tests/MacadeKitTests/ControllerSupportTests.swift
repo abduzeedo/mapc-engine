@@ -95,6 +95,7 @@ import Testing
         #expect(s.playStationAsXbox == nil)            // nil means on
         #expect(s.appliedControllerCompat == nil)
         #expect(s.appliedControllerMappings == nil)
+        #expect(s.appliedFontLinks == nil)
     }
 
     /// Parses a layout into target -> source, e.g. "lefttrigger" -> "a7".

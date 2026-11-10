@@ -29,6 +29,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var appliedControllerCompat: [String: Bool]?
     /// `ControllerSupport.sdlMappingsVersion` last written into each bottle's registry, by bottle.
     public var appliedControllerMappings: [String: Int]?
+    /// `FontLinks.version` last written into each bottle's registry, by bottle. Bottles made before the links
+    /// existed get them once, the next time the app prepares them.
+    public var appliedFontLinks: [String: Int]?
     /// "system", "light" or "dark"; `nil` follows the system.
     public var appearance: String?
     /// Game page layout: "magazine" (text on the art's color) or "panels"; `nil` is magazine.
