@@ -54,16 +54,91 @@ public struct SteamProvider: StoreProvider, Sendable {
 
     /// Creates the bottle, downloads Valve's installer and installs Steam silently.
     public func installSteam(engine: Engine) async throws {
+        // The Steam environment may already exist from an earlier try, and then nothing below would start Wine
+        // through a path that checks these. Same questions as a launch gets (`WineRunner.launch`).
+        if engine.isDamaged { throw WineRunnerError.engineDamaged(version: engine.version, missing: engine.missingCoreFiles) }
+        if !SystemCheck.rosettaIsInstalled() { throw WineRunnerError.rosettaMissing }
         try await BottleManager(paths: paths).ensure(.steam, engine: engine)
         let (tmp, response) = try await URLSession.shared.download(from: Self.setupURL)
-        guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw WineRunnerError.launchFailed("couldn't download the Steam installer") }
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard status == 200 else {
+            recordInstallFailure(engine: engine, detail: "the installer download returned HTTP \(status)")
+            throw WineRunnerError.launchFailed("couldn't download the Steam installer")
+        }
         let installer = paths.home.appendingPathComponent("SteamSetup.exe")
         try? FileManager.default.removeItem(at: installer)
         try FileManager.default.moveItem(at: tmp, to: installer)
         defer { try? FileManager.default.removeItem(at: installer) }
+        try await runInstaller(installer, engine: engine)
+    }
+
+    /// Runs Valve's installer in the Steam environment and checks that Steam is there afterwards. When it isn't, why
+    /// goes to `Logs/steam-setup/<time>.log`. Before, the installer's output and exit status were dropped: a report
+    /// from a Mac where Steam never installed (MaPC 1.1.27, 2026-11-10) had no log at all to say what happened.
+    func runInstaller(_ installer: URL, engine: Engine) async throws {
+        // A download a network filter replaced (an error page, a cut-off file) isn't a Windows program.
+        guard Self.isWindowsProgram(installer) else {
+            recordInstallFailure(engine: engine, detail: "the downloaded installer isn't a Windows program: \(Self.describe(installer))")
+            throw WineRunnerError.launchFailed("the Steam installer download was damaged or blocked; try again, or on another network")
+        }
         let env = WineRunner.environment(bottle: bottle, profile: LaunchProfile())
-        _ = try await ProcessRunner.run(engine.wine, [installer.path, "/S"], environment: env)
-        guard isSteamInstalled else { throw WineRunnerError.launchFailed("Steam did not install") }
+        let result: ProcessResult
+        do {
+            result = try await ProcessRunner.run(engine.wine, [installer.path, "/S"], environment: env)
+        } catch {
+            recordInstallFailure(engine: engine, detail: "wine could not be started: \(error)")
+            throw error
+        }
+        // The installer can hand the work to another process and exit first; wait for the environment to settle.
+        if !isSteamInstalled { await waitForEnvironment(engine: engine, environment: env) }
+        guard isSteamInstalled else {
+            recordInstallFailure(engine: engine, detail: "SteamSetup.exe /S exited with status \(result.status) and no steam.exe appeared. "
+                                 + "Installer \(Self.describe(installer)). \(installedFiles())", output: result.output)
+            throw WineRunnerError.launchFailed("Steam did not install")
+        }
+    }
+
+    /// `wineserver -w`: returns once nothing runs in the environment. Bounded, so a stuck process can't hang setup.
+    private func waitForEnvironment(engine: Engine, environment: [String: String], seconds: UInt64 = 120) async {
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { _ = try? await ProcessRunner.run(engine.wineserver, ["-w"], environment: environment) }
+            group.addTask { try? await Task.sleep(nanoseconds: seconds * 1_000_000_000) }
+            _ = await group.next()
+            group.cancelAll()
+        }
+    }
+
+    private func recordInstallFailure(engine: Engine, detail: String, output: String = "") {
+        BottleManager(paths: paths).recordSetupFailure(.steam, engine: engine, step: "Install Steam", detail: detail, output: output)
+    }
+
+    /// What the Steam folder holds after a failed install, so the log tells "nothing was written" from "written elsewhere".
+    private func installedFiles() -> String {
+        let fm = FileManager.default
+        let programFiles = bottle.driveC.appendingPathComponent("Program Files (x86)")
+        guard fm.fileExists(atPath: programFiles.path) else { return "drive_c has no Program Files (x86) folder." }
+        guard let names = try? fm.contentsOfDirectory(atPath: bottle.steamDirectory.path) else {
+            return "No Steam folder in Program Files (x86)."
+        }
+        return "Steam folder holds: " + (names.isEmpty ? "nothing" : names.sorted().prefix(30).joined(separator: ", "))
+    }
+
+    /// A Windows program starts with "MZ".
+    static func isWindowsProgram(_ file: URL) -> Bool {
+        guard let handle = try? FileHandle(forReadingFrom: file) else { return false }
+        defer { try? handle.close() }
+        return (try? handle.read(upToCount: 2)) == Data("MZ".utf8)
+    }
+
+    /// Size and first bytes of a file, for a setup log.
+    static func describe(_ file: URL) -> String {
+        let size = (try? FileManager.default.attributesOfItem(atPath: file.path))?[.size] as? Int ?? -1
+        let head = (try? FileHandle(forReadingFrom: file)).flatMap { handle -> Data? in
+            defer { try? handle.close() }
+            return try? handle.read(upToCount: 16)
+        } ?? Data()
+        let printable = String(decoding: head, as: UTF8.self).map { $0.isASCII && !$0.isNewline ? $0 : "." }
+        return "\(size) bytes, starts with \"\(String(printable))\""
     }
 
     // MARK: Launching
