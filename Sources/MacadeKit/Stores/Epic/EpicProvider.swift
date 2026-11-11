@@ -85,7 +85,7 @@ public struct EpicProvider: StoreProvider, Sendable {
     /// 10 s API timeout, so the list failed for that account while a 93-game one worked. Wait up to a minute, and
     /// try once more, since the server can also be slow once. Legendary's output goes to `Logs/epic/`.
     func libraryList() async throws -> Data {
-        let args = ["--api-timeout", "\(Self.apiTimeout)", "list", "--platform", "Windows", "--json"]
+        let args = Self.apiTimeoutArguments + ["list", "--platform", "Windows", "--json"]
         do { return try await json(args, logTo: try? runner.logs.newLog(for: kind.rawValue)) }
         catch EpicError.commandFailed {
             return try await json(args, logTo: try? runner.logs.newLog(for: kind.rawValue))
@@ -94,10 +94,15 @@ public struct EpicProvider: StoreProvider, Sendable {
 
     static let apiTimeout = 60
 
+    /// Put before the command on every legendary run that talks to Epic. `install`, `update` and `launch` fetch the
+    /// whole library's asset list again before they start (legendary's `get_game(update_meta=True)` and
+    /// `get_asset(update=True)`), so on a big library they hit the same 10 s timeout as `list`: a 1,043-game account
+    /// failed every install while its 91-game backup installed the same game (2026-11-10 report).
+    static var apiTimeoutArguments: [String] { ["--api-timeout", "\(apiTimeout)"] }
+
     /// What to tell the user from the end of legendary's error output: a timeout says so, anything else names the
     /// last error line (an exception, "Error:"), cut short. Only that line is shown, never the whole output.
-    static func failureSummary(fromLog log: String) -> String {
-        let base = "Couldn't read your Epic library."
+    static func failureSummary(fromLog log: String, base: String = "Couldn't read your Epic library.") -> String {
         if log.contains("ReadTimeout") || log.contains("timed out") {
             return base + " Epic took too long to answer. Try again in a minute."
         }
@@ -120,34 +125,50 @@ public struct EpicProvider: StoreProvider, Sendable {
     /// stop to prompt for which to install and crash on EOF; this installs only the required data instead.
     public func install(_ game: Game, onProgress: @escaping @Sendable (Double) -> Void) async throws {
         try FileManager.default.createDirectory(at: gamesFolder, withIntermediateDirectories: true)
-        let r = try await ProcessRunner.run(
-            legendary,
-            ["install", game.storeID, "--platform", "Windows", "--base-path", gamesFolder.path, "-y", "--skip-sdl"],
-            environment: environment
-        ) { line in
-            switch line {
-            case .stdout(let s), .stderr(let s): if let p = LegendaryParser.progress(from: s) { onProgress(p) }
-            }
-        }
-        guard r.succeeded else { throw EpicError.commandFailed("The install didn't finish. You can resume it.") }
+        try await download(game, ["install", game.storeID, "--platform", "Windows", "--base-path", gamesFolder.path, "-y", "--skip-sdl"],
+                           failure: "The install didn't finish. You can resume it.", onProgress: onProgress)
     }
 
     /// Installs the update Epic released for an installed game, in place. legendary won't start a game that has
     /// one (`Game is out of date`). Cancelling stops the download; running again resumes it.
     public func update(_ game: Game, onProgress: @escaping @Sendable (Double) -> Void) async throws {
-        let r = try await ProcessRunner.run(legendary, ["update", game.storeID, "-y", "--skip-sdl"], environment: environment) { line in
+        try await download(game, ["update", game.storeID, "-y", "--skip-sdl"],
+                           failure: "The update didn't finish. You can resume it.", onProgress: onProgress)
+    }
+
+    /// Runs an install or update. legendary's output, without the download's per-second progress lines, goes to
+    /// `Logs/epic-install/` so a failed install says why in a problem report. Not the game's own log folder: that
+    /// one's newest log is what Check Last Launch and the update offer read. The error shown names a timeout or
+    /// legendary's last error line.
+    private func download(_ game: Game, _ args: [String], failure: String,
+                          onProgress: @escaping @Sendable (Double) -> Void) async throws {
+        guard isLegendaryInstalled else { throw EpicError.legendaryMissing }
+        let log = try? runner.logs.newLog(for: Self.installLogID)
+        let handle = log.flatMap { try? FileHandle(forWritingTo: $0) }
+        defer { try? handle?.close() }
+        let stamp = { ISO8601DateFormatter().string(from: Date()) }
+        try? handle?.write(contentsOf: Data("[MaPC] Launch \(stamp()) legendary=\(Self.legendaryVersion) command=\(args[0]) game=\(game.storeID)\n".utf8))
+        let r = try await ProcessRunner.run(legendary, Self.apiTimeoutArguments + args, environment: environment) { line in
             switch line {
-            case .stdout(let s), .stderr(let s): if let p = LegendaryParser.progress(from: s) { onProgress(p) }
+            case .stdout(let s), .stderr(let s):
+                if let p = LegendaryParser.progress(from: s) { onProgress(p) }
+                if !LegendaryParser.isProgressDetail(s) { try? handle?.write(contentsOf: Data((s + "\n").utf8)) }
             }
         }
-        guard r.succeeded else { throw EpicError.commandFailed("The update didn't finish. You can resume it.") }
+        try? handle?.write(contentsOf: Data("\n[MaPC] Exit \(stamp()) status=\(r.status)\n".utf8))
+        guard r.succeeded else {
+            let summary = Self.failureSummary(fromLog: String(r.output.suffix(8192)), base: failure)
+            throw EpicError.commandFailed(summary)
+        }
     }
+
+    static let installLogID = "epic-install"
 
     /// The text legendary prints when a game has an update it must install before launching.
     public static func needsUpdate(launchOutput: String) -> Bool { launchOutput.contains("Game is out of date") }
 
     public func uninstall(_ game: Game) async throws {
-        let r = try await run(["uninstall", game.storeID, "-y"])
+        let r = try await run(Self.apiTimeoutArguments + ["uninstall", game.storeID, "-y"])
         guard r.succeeded else { throw EpicError.commandFailed("Couldn't uninstall \(game.title).") }
     }
 
@@ -158,7 +179,7 @@ public struct EpicProvider: StoreProvider, Sendable {
         guard isSignedIn else { throw EpicError.notSignedIn }
         return try runner.launch(
             program: legendary,
-            arguments: ["launch", game.storeID, "--wine", engine.wine.path, "--wine-prefix", bottle.url.path] + profile.extraArguments,
+            arguments: Self.apiTimeoutArguments + ["launch", game.storeID, "--wine", engine.wine.path, "--wine-prefix", bottle.url.path] + profile.extraArguments,
             engine: engine, bottle: bottle, profile: profile,
             extraEnvironment: ["LEGENDARY_CONFIG_PATH": paths.legendaryConfig.path],
             logID: game.id, onExit: onExit)

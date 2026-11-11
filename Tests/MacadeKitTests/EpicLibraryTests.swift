@@ -72,4 +72,53 @@ import Testing
         defer { try? FileManager.default.removeItem(at: home) }
         #expect(String(decoding: try await epic.libraryList(), as: UTF8.self).contains("[]"))
     }
+
+    /// `install` refreshes the whole library's assets before downloading, so it needs the same timeout as `list`
+    /// (2026-11-10: every install failed on a 1,043-game account). Its output goes to its own log folder.
+    @Test func anInstallWaitsForABigLibraryAndLogsWhyItFailed() async throws {
+        let (epic, home) = try provider(script: """
+            #!/bin/sh
+            echo "$@" >> "$0.calls"
+            echo "[DLManager] INFO: = Progress: 1.00% (1/100), Running for 00:00:01, ETA: 00:01:39" >&2
+            echo "[DLManager] INFO:  - Downloaded: 2.00 MiB, Written: 2.00 MiB" >&2
+            echo "requests.exceptions.ReadTimeout: Read timed out. (read timeout=60)" >&2
+            exit 1
+            """)
+        defer { try? FileManager.default.removeItem(at: home) }
+        let game = Game(store: .epic, storeID: "Sparrow", title: "Blood West", isInstalled: false)
+        let seen = ProgressBox()
+        do {
+            try await epic.install(game) { seen.value = $0 }
+            Issue.record("the install should fail")
+        } catch {
+            #expect(error.localizedDescription.hasPrefix("The install didn't finish. You can resume it."))
+            #expect(error.localizedDescription.contains("took too long"))
+        }
+        #expect(seen.value == 0.01)
+        let calls = try String(contentsOf: epic.legendary.appendingPathExtension("calls"), encoding: .utf8)
+        #expect(calls.hasPrefix("--api-timeout 60 install Sparrow --platform Windows"))
+        #expect(epic.runner.logs.logs(for: game.id).isEmpty)
+        let logs = epic.runner.logs.logs(for: EpicProvider.installLogID)
+        #expect(logs.count == 1)
+        let text = try String(contentsOf: logs[0], encoding: .utf8)
+        #expect(text.contains("[MaPC] Launch") && text.contains("command=install game=Sparrow") && text.contains("ReadTimeout"))
+        #expect(text.contains("[MaPC] Exit") && text.contains("status=1"))
+        #expect(!text.contains("Progress:") && !text.contains("Downloaded:"))
+    }
+
+    @Test func progressDetailLinesAreRecognised() {
+        #expect(LegendaryParser.isProgressDetail("[DLManager] INFO: = Progress: 12.34% (123/1000), Running for 00:01:00"))
+        #expect(LegendaryParser.isProgressDetail("[DLManager] INFO:  + Disk\t- 2.46 MiB/s (write)"))
+        #expect(!LegendaryParser.isProgressDetail("[DLManager] INFO: Starting file writing worker..."))
+        #expect(!LegendaryParser.isProgressDetail("[cli] INFO: Preparing download for \"Blood West\"..."))
+    }
+}
+
+private final class ProgressBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: Double?
+    var value: Double? {
+        get { lock.withLock { stored } }
+        set { lock.withLock { stored = newValue } }
+    }
 }
