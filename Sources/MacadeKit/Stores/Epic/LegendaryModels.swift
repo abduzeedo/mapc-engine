@@ -54,4 +54,12 @@ public enum LegendaryParser {
         guard let pct = rest.split(separator: "%").first, let value = Double(pct) else { return nil }
         return min(1, max(0, value / 100))
     }
+
+    /// legendary's download status block, printed every second: the `= Progress:` line and the ` - Downloaded:`,
+    /// ` - Cache usage:`, ` + Download` and ` + Disk` lines under it. Logs leave these out.
+    public static func isProgressDetail(_ line: String) -> Bool {
+        guard let range = line.range(of: "[DLManager] INFO: ") else { return false }
+        let rest = line[range.upperBound...]
+        return rest.hasPrefix("= Progress") || rest.hasPrefix(" - ") || rest.hasPrefix(" + ")
+    }
 }
