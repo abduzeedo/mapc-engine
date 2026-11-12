@@ -95,8 +95,16 @@ import Testing
         }
         var profile = LaunchProfile()
         profile.extraArguments = ["-dx11", "argument with spaces"]
-        let process = try steam.play(Game(store: .steam, storeID: "123", title: "Test", isInstalled: true), engine: engine, profile: profile)
-        for _ in 0..<100 where process.isRunning { try await Task.sleep(for: .milliseconds(10)) }
+        let (exits, exited) = AsyncStream<Int32>.makeStream()
+        let process = try steam.play(Game(store: .steam, storeID: "123", title: "Test", isInstalled: true), engine: engine, profile: profile,
+                                     onExit: { exited.yield($0) })
+        let status = await withTaskGroup(of: Int32?.self) { group in
+            group.addTask { await exits.first { _ in true } }
+            group.addTask { try? await Task.sleep(for: .seconds(10)); return nil }
+            defer { group.cancelAll() }
+            return await group.next() ?? nil
+        }
+        #expect(status == 0, "fake wine did not exit with status 0 within 10 s")
         let text = try String(contentsOf: process.logURL, encoding: .utf8)
         #expect(text.contains("-applaunch\n123\n-dx11\nargument with spaces\n"))
         #expect(text.contains("engine=test"))
