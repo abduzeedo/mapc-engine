@@ -4,7 +4,16 @@ import Foundation
 public enum KnownIssues {
     public static let builtIn: [String: String] = [
         "epic:Fortnite": "Fortnite uses kernel-level anti-cheat that doesn't run on macOS.",
+        // id Tech games that require Vulkan hardware ray tracing (no option to turn it off). MoltenVK has no
+        // VK_KHR_acceleration_structure / ray_query yet (MoltenVK PR #2771 is still experimental), so the game
+        // finds no ray tracing GPU and quits within a second, writing nothing. The Graphics setting can't help:
+        // it only changes how DirectX reaches Metal, and these games draw with Vulkan.
+        "steam:2677660": vulkanRayTracingNote,   // Indiana Jones and the Great Circle
+        "steam:3017860": vulkanRayTracingNote,   // DOOM: The Dark Ages
     ]
+
+    static let vulkanRayTracingNote =
+        "This game requires Vulkan ray tracing, which can't be turned off and isn't available on Mac yet, so it closes right after it starts. Changing Graphics doesn't help: it only affects DirectX games."
 
     /// Shown for DirectX 12 games (found by `GraphicsProbe`) while no D3DMetal engine is installed.
     public static let needsDirectX12Engine =
