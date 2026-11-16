@@ -61,4 +61,23 @@ import Testing
         #expect(ChromiumHelperWrapper.wrapper(in: engine, bundled: nil) == newer)
         #expect(ChromiumHelperWrapper.wrapper(in: engine, bundled: bundled) == wrapper)
     }
+
+    @Test func wrapsUbisoftConnectInAnyEnvironment() throws {
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let paths = Paths(home: dir)
+        let bottle = Bottle(kind: .epic, paths: paths)
+        let upc = bottle.driveC.appendingPathComponent("Program Files (x86)/Ubisoft/Ubisoft Game Launcher/upc.exe")
+        try FileManager.default.createDirectory(at: upc.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: bottle.driveC.appendingPathComponent("windows"), withIntermediateDirectories: true)
+        try vendor.write(to: upc)
+        try #"{"version":"2.0.0","wineVersion":"11","backends":["d3dMetal"],"minMacOS":"14.0"}"#
+            .write(to: dir.appendingPathComponent("ENGINE.json"), atomically: true, encoding: .utf8)
+        let engine = try #require(Engine(directory: dir))
+        let bundled = dir.appendingPathComponent("chromium-helper-wrapper.exe")
+        try wrapper.write(to: bundled)
+        #expect(ChromiumHelperWrapper.apply(to: bottle, engine: engine, bundled: bundled)
+                == ["Program Files (x86)/Ubisoft/Ubisoft Game Launcher/upc.exe"])
+        #expect(FileManager.default.contents(atPath: upc.path) == wrapper)
+        #expect(FileManager.default.contents(atPath: upc.deletingLastPathComponent().appendingPathComponent("upc_real.exe").path) == vendor)
+    }
 }
