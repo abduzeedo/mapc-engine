@@ -73,22 +73,41 @@ public struct LauncherStore: StoreProvider, Sendable {
 
     /// Creates the environment, downloads the official installer and runs it. Returns when the
     /// installer exits; the launcher may still finish its own first-run update afterwards.
+    /// Every step that fails writes why to `Logs/<store>-setup/`, with the installer's exit status and the end of
+    /// its output: a 2026-11-16 report of the EA app failing to set up had nothing to read.
     public func installLauncher(engine: Engine) async throws {
-        try await BottleManager(paths: paths).ensure(kind.bottleKind, engine: engine)
-        // The EA app's installer has a .NET custom action; without Wine Mono it fails with error 1603.
-        try await WineMono(paths: paths).ensureInstalled(in: bottle, engine: engine)
-        await prepare(engine: engine)
-        let (tmp, response) = try await URLSession.shared.download(from: installerURL)
-        guard (response as? HTTPURLResponse)?.statusCode == 200 else {
-            throw WineRunnerError.launchFailed("couldn't download the \(kind.displayName) installer")
+        let manager = BottleManager(paths: paths)
+        func failed(_ step: String, _ error: Error, output: String = "") -> Error {
+            manager.recordSetupFailure(kind.bottleKind, engine: engine, detail: "\(step): \(error.localizedDescription)", output: output)
+            return error
         }
+        try await manager.ensure(kind.bottleKind, engine: engine)
+        // The EA app's installer has a .NET custom action; without Wine Mono it fails with error 1603.
+        do { try await WineMono(paths: paths).ensureInstalled(in: bottle, engine: engine) }
+        catch { throw failed("installing Wine Mono", error) }
+        await prepare(engine: engine)
+        let tmp: URL
+        do {
+            let (file, response) = try await URLSession.shared.download(from: installerURL)
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            guard status == 200 else {
+                throw WineRunnerError.launchFailed("couldn't download the \(kind.displayName) installer (HTTP \(status))")
+            }
+            tmp = file
+        } catch { throw failed("downloading the installer", error) }
         let installer = paths.home.appendingPathComponent("\(kind.rawValue)-setup.exe")
         try? FileManager.default.removeItem(at: installer)
         try FileManager.default.moveItem(at: tmp, to: installer)
         defer { try? FileManager.default.removeItem(at: installer) }
         let env = WineRunner.environment(bottle: bottle, profile: LaunchProfile())
-        _ = try await ProcessRunner.run(engine.wine, [installer.path] + installerArguments, environment: env)
-        guard isLauncherInstalled else { throw WineRunnerError.launchFailed("\(kind.displayName) did not install") }
+        let result: ProcessResult
+        do { result = try await ProcessRunner.run(engine.wine, [installer.path] + installerArguments, environment: env) }
+        catch { throw failed("starting the installer", error) }
+        guard isLauncherInstalled else {
+            let error = WineRunnerError.launchFailed("\(kind.displayName) did not install")
+            throw failed("installer exited with status \(result.status) and \(launcherExecutable.lastPathComponent) is missing",
+                         error, output: result.output)
+        }
     }
 
     // MARK: Library
