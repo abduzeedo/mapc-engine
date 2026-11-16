@@ -10,7 +10,15 @@ import Foundation
 public enum ChromiumHelperWrapper {
     /// Bottle-relative helpers to wrap. Rockstar's Social Club draws the Rockstar Games Launcher's sign-in
     /// window; without the wrapper it stays empty and games that need the launcher never start.
-    static let helpers = ["Program Files/Rockstar Games/Social Club/SocialClubHelper.exe"]
+    /// Ubisoft Connect's `upc.exe` is itself the Chromium browser process (its helpers, `UplayWebCore.exe`, are
+    /// only children), so the flags have to reach upc.exe. Games start it themselves with a `uplay://launch` link,
+    /// so MaPC can't add them on the command line. Unwrapped, its window stayed white and the game never started
+    /// (Trackmania from Epic, 2026-11-16); with the flags it drew and signed in. Wrapping it in every environment
+    /// also covers Ubisoft Connect started by Steam for Steam copies of Ubisoft games.
+    static let helpers = [
+        "Program Files/Rockstar Games/Social Club/SocialClubHelper.exe",
+        "Program Files (x86)/Ubisoft/Ubisoft Game Launcher/upc.exe",
+    ]
     /// Built into the generic wrapper; older engines ship one that can only start `steamwebhelper_real.exe`.
     static let marker = Data("macade-chromium-wrapper/2".utf8)
 

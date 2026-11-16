@@ -16,12 +16,19 @@ public enum GraphicsBackend: String, Codable, Sendable, CaseIterable {
     /// Resolves `.auto` for a game. DXVK (on DXVK-macOS 1.10.3) only reaches Direct3D 11 feature level 11.0
     /// and has no Direct3D 12, so DirectX 12 games go to Apple's D3DMetal whenever an engine provides it.
     /// 32-bit Direct3D 10/11 games go to DXMT, the only backend that can create their device (see `GraphicsProbe`).
-    /// Games in `d3dMetalGames` go to D3DMetal and games in `dxmtGames` go to DXMT. Everything else stays on DXVK,
+    /// Games in `d3dMetalGames` go to D3DMetal and games in `dxmtGames` go to DXMT. Games that start through
+    /// Ubisoft Connect (`needsUbisoftConnect`) go to D3DMetal, else DXMT: only those come with the CrossOver-based
+    /// engine, and Ubisoft Connect hangs at startup on the Wine Staging (DXVK) engine. Everything else stays on DXVK,
     /// which is what the games verified so far were tested with.
     public func resolved(for probe: GraphicsProbe? = nil, d3dMetalAvailable: Bool = false,
-                         dxmtAvailable: Bool = false, gameID: String? = nil) -> GraphicsBackend {
+                         dxmtAvailable: Bool = false, gameID: String? = nil,
+                         needsUbisoftConnect: Bool = false) -> GraphicsBackend {
         guard self == .auto else { return self }
         if d3dMetalAvailable && probe?.usesDirectX12 == true { return .d3dMetal }
+        if needsUbisoftConnect && probe?.uses32BitDirect3D11 != true {
+            if d3dMetalAvailable { return .d3dMetal }
+            if dxmtAvailable { return .dxmt }
+        }
         if d3dMetalAvailable, let gameID, Self.d3dMetalGames.contains(gameID) { return .d3dMetal }
         if dxmtAvailable && probe?.uses32BitDirect3D11 == true { return .dxmt }
         if dxmtAvailable, let gameID, Self.dxmtGames.contains(gameID) { return .dxmt }

@@ -78,6 +78,11 @@ private func fixtureData(_ name: String) throws -> Data {
         #expect(GraphicsBackend.auto.resolved(for: d3d11x86, dxmtAvailable: true) == .dxmt)
         #expect(GraphicsBackend.auto.resolved(for: d3d11x86, dxmtAvailable: false) == .dxvk)
         #expect(GraphicsBackend.auto.resolved(for: dx11, dxmtAvailable: true) == .dxvk)
+        // Ubisoft Connect hangs on the DXVK engine: games that need it go to the CrossOver-based engine's backends.
+        #expect(GraphicsBackend.auto.resolved(for: dx11, d3dMetalAvailable: true, dxmtAvailable: true, needsUbisoftConnect: true) == .d3dMetal)
+        #expect(GraphicsBackend.auto.resolved(for: dx11, dxmtAvailable: true, needsUbisoftConnect: true) == .dxmt)
+        #expect(GraphicsBackend.auto.resolved(for: nil, needsUbisoftConnect: true) == .dxvk)
+        #expect(GraphicsBackend.dxvk.resolved(for: dx11, d3dMetalAvailable: true, needsUbisoftConnect: true) == .dxvk)
     }
 
     @Test func d3dMetalGetsCrossOverVariablesFromItsEngine() throws {

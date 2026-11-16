@@ -21,9 +21,9 @@ public enum KnownIssues {
     }
 
     /// Shown for Ubisoft games bought on Epic (`Game.requiredLauncher`). MaPC installs Ubisoft Connect for them on the
-    /// first Play, but Ubisoft Connect doesn't run reliably in MaPC yet (its window can stay on the loading screen).
+    /// first Play and run it on the D3DMetal or DXMT engine (see `GraphicsBackend.resolved`); DXVK's engine hangs it.
     public static let needsUbisoftConnect =
-        "This game needs Ubisoft Connect, which MaPC installs the first time you press Play. Ubisoft Connect doesn't run reliably in MaPC yet, so the game may not start or may stop on Ubisoft's loading screen. Your Epic account also needs to be linked to a Ubisoft account."
+        "This game needs Ubisoft Connect, which MaPC installs the first time you press Play. Ubisoft Connect opens first and starts the game; the first time, it may ask you to sign in. Keep graphics on Automatic, D3DMetal or DXMT: Ubisoft Connect doesn't start with DXVK. Your Epic account also needs to be linked to a Ubisoft account."
 
     public static func note(for game: Game, remote: [String: String]? = nil, probe: GraphicsProbe? = nil,
                             d3dMetalAvailable: Bool = false, dxmtAvailable: Bool = false) -> String? {
