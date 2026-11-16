@@ -33,10 +33,14 @@ public struct Game: Identifiable, Codable, Hashable, Sendable {
     public var heroURL: URL?
     /// 0...1 while the store is installing or updating this game.
     public var installProgress: Double?
+    /// Another store's launcher the game needs running, though a different store sold it: Ubisoft Connect for
+    /// Ubisoft games bought on Epic.
+    public var requiredLauncher: StoreKind?
 
     public init(store: StoreKind, storeID: String, title: String, isInstalled: Bool,
                 installPath: URL? = nil, sizeOnDisk: Int64? = nil,
-                coverURL: URL? = nil, heroURL: URL? = nil, installProgress: Double? = nil) {
+                coverURL: URL? = nil, heroURL: URL? = nil, installProgress: Double? = nil,
+                requiredLauncher: StoreKind? = nil) {
         self.id = "\(store.rawValue):\(storeID)"
         self.store = store
         self.storeID = storeID
@@ -47,5 +51,6 @@ public struct Game: Identifiable, Codable, Hashable, Sendable {
         self.coverURL = coverURL
         self.heroURL = heroURL
         self.installProgress = installProgress
+        self.requiredLauncher = requiredLauncher
     }
 }

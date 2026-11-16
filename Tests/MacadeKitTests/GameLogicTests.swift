@@ -179,6 +179,34 @@ private func fixtureData(_ name: String) throws -> Data {
         #expect(games[0].isInstalled == false && games[0].coverURL == nil)
     }
 
+    @Test func marksUbisoftGamesSoldOnEpic() throws {
+        let list = Data(#"""
+        [
+          {"app_name":"Camellia","app_title":"Assassin's Creed Origins","metadata":{"customAttributes":{
+            "ThirdPartyManagedApp":{"type":"STRING","value":"Ubisoft Connect"}}}},
+          {"app_name":"partner","app_title":"Partner Linked","metadata":{"customAttributes":{
+            "partnerLinkType":{"type":"STRING","value":"ubisoft"},"partnerLinkId":{"type":"STRING","value":"123"}}}},
+          {"app_name":"ea","app_title":"EA Game","metadata":{"customAttributes":{
+            "ThirdPartyManagedApp":{"type":"STRING","value":"The EA App"},"Odd":{"type":"BOOLEAN","value":true}}}},
+          {"app_name":"plain","app_title":"Plain Game","metadata":{"customAttributes":{}}}
+        ]
+        """#.utf8)
+        let games = try LegendaryParser.games(listJSON: list, installedJSON: Data("[]".utf8))
+        let byID = Dictionary(uniqueKeysWithValues: games.map { ($0.storeID, $0) })
+        #expect(byID["Camellia"]?.requiredLauncher == .ubisoft)
+        #expect(byID["partner"]?.requiredLauncher == .ubisoft)
+        #expect(byID["ea"]?.requiredLauncher == nil)
+        #expect(byID["plain"]?.requiredLauncher == nil)
+    }
+
+    @Test func epicUbisoftGameNeedsUbisoftConnectInstall() {
+        let epic = EpicProvider(paths: Paths(home: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)))
+        let ubisoftGame = Game(store: .epic, storeID: "Camellia", title: "AC Origins", isInstalled: true, requiredLauncher: .ubisoft)
+        let plain = Game(store: .epic, storeID: "plain", title: "Plain", isInstalled: true)
+        #expect(epic.needsUbisoftConnectInstall(for: ubisoftGame))
+        #expect(!epic.needsUbisoftConnectInstall(for: plain))
+    }
+
     @Test func parsesProgressLines() {
         #expect(LegendaryParser.progress(from: "[DLManager] INFO: = Progress: 12.50% (125/1000), Running for 00:00:10, ETA: 00:01:10") == 0.125)
         #expect(LegendaryParser.progress(from: "[DLManager] INFO: = Progress: 100.00% (1/1)") == 1)
@@ -239,6 +267,14 @@ private func fixtureData(_ name: String) throws -> Data {
         #expect(KnownIssues.note(for: other) == nil)
         #expect(KnownIssues.note(for: other, remote: ["steam:1": "Needs a patch"]) == "Needs a patch")
         #expect(KnownIssues.note(for: fortnite, remote: ["epic:Fortnite": "Custom"]) == "Custom")
+        let origins = Game(store: .epic, storeID: "Camellia", title: "AC Origins", isInstalled: true, requiredLauncher: .ubisoft)
+        #expect(KnownIssues.note(for: origins) == KnownIssues.needsUbisoftConnect)
+    }
+
+    @Test func gamesSavedBeforeRequiredLauncherStillDecode() throws {
+        let old = Data(#"{"id":"epic:x","store":"epic","storeID":"x","title":"X","isInstalled":false}"#.utf8)
+        let game = try JSONDecoder().decode(Game.self, from: old)
+        #expect(game.requiredLauncher == nil)
     }
 
     @Test func antiCheatNoteFromTheGamesFolder() {
