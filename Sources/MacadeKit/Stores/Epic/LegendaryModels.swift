@@ -5,8 +5,18 @@ struct LegendaryListEntry: Decodable {
     struct Metadata: Decodable {
         struct KeyImage: Decodable { let type: String; let url: String }
         struct Category: Decodable { let path: String? }
+        /// One of Epic's `customAttributes`, `{"type": "STRING", "value": "…"}`. A value that isn't text is left out.
+        struct Attribute: Decodable {
+            let value: String?
+            init(from decoder: Decoder) throws {
+                let c = try? decoder.container(keyedBy: CodingKeys.self)
+                value = try? c?.decodeIfPresent(String.self, forKey: .value)
+            }
+            enum CodingKeys: String, CodingKey { case value }
+        }
         let keyImages: [KeyImage]?
         let categories: [Category]?
+        let customAttributes: [String: Attribute]?
     }
     let app_name: String
     let app_title: String
@@ -14,6 +24,17 @@ struct LegendaryListEntry: Decodable {
 
     /// Unreal Engine content from Fab (materials, plugins, sample projects) is listed with the games.
     var isEngineAsset: Bool { metadata?.categories?.contains { $0.path == "asset-format" } == true }
+
+    /// Ubisoft games sold on Epic still run through Ubisoft Connect. Epic marks them the way legendary reads them:
+    /// `ThirdPartyManagedApp` (or `ThirdPartyManagedProvider`) is Ubisoft Connect, or `partnerLinkType` is `ubisoft`.
+    /// The Epic launcher installs Ubisoft Connect for them as a prerequisite; legendary does that only on Windows.
+    var needsUbisoftConnect: Bool {
+        let attributes = metadata?.customAttributes ?? [:]
+        let thirdParty = [attributes["ThirdPartyManagedApp"]?.value, attributes["ThirdPartyManagedProvider"]?.value]
+            .compactMap { $0?.lowercased().replacingOccurrences(of: " ", with: "") }
+        return thirdParty.contains { $0.contains("ubisoft") || $0.contains("uplay") }
+            || attributes["partnerLinkType"]?.value?.lowercased() == "ubisoft"
+    }
 }
 
 struct LegendaryInstalledEntry: Decodable {
@@ -42,7 +63,8 @@ public enum LegendaryParser {
                 installPath: inst.map { URL(fileURLWithPath: $0.install_path) },
                 sizeOnDisk: inst?.install_size,
                 coverURL: image(e, ["DieselGameBoxTall", "Thumbnail"]),
-                heroURL: image(e, ["DieselGameBox", "OfferImageWide"]))
+                heroURL: image(e, ["DieselGameBox", "OfferImageWide"]),
+                requiredLauncher: e.needsUbisoftConnect ? .ubisoft : nil)
         }
         .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
     }

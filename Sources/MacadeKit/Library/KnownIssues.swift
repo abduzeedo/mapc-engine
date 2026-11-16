@@ -20,9 +20,15 @@ public enum KnownIssues {
         "This game includes \(antiCheat) anti-cheat, which needs Windows itself and doesn't run on a Mac. If the game needs it to play, it closes soon after it starts. Some games use it only for online play."
     }
 
+    /// Shown for Ubisoft games bought on Epic (`Game.requiredLauncher`). MaPC installs Ubisoft Connect for them on the
+    /// first Play, but Ubisoft Connect doesn't run reliably in MaPC yet (its window can stay on the loading screen).
+    public static let needsUbisoftConnect =
+        "This game needs Ubisoft Connect, which MaPC installs the first time you press Play. Ubisoft Connect doesn't run reliably in MaPC yet, so the game may not start or may stop on Ubisoft's loading screen. Your Epic account also needs to be linked to a Ubisoft account."
+
     public static func note(for game: Game, remote: [String: String]? = nil, probe: GraphicsProbe? = nil,
                             d3dMetalAvailable: Bool = false, dxmtAvailable: Bool = false) -> String? {
         if let note = remote?[game.id] ?? builtIn[game.id] { return note }
+        if game.requiredLauncher == .ubisoft { return needsUbisoftConnect }
         if let antiCheat = probe?.antiCheat { return antiCheatNote(antiCheat) }
         if probe?.usesDirectX12 == true && !d3dMetalAvailable { return needsDirectX12Engine }
         if probe?.uses32BitDirect3D11 == true && !dxmtAvailable { return needs32BitDirect3D11Engine }
