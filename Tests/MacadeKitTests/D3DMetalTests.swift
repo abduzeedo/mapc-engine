@@ -127,9 +127,11 @@ private struct FakeToolkit {
         // Game Porting Toolkit 4.0 beta 3's layout: Apple's license at the top of the image.
         try #"{\rtf1 ENGLISH APPLE INC. SOFTWARE LICENSE AGREEMENT FOR GAME PORTING TOOLKIT}"#
             .write(to: image.appendingPathComponent("License.rtf"), atomically: true, encoding: .utf8)
-        #expect(D3DMetalStore.findLicense(near: lib, in: image) == image.appendingPathComponent("License.rtf"))
+        #expect(D3DMetalStore.findLicense(near: lib, in: image)?.lastPathComponent == "License.rtf")
+        // `locate` hands over lib resolved (/private/var/...) while the mount point is /var/...: still found.
+        #expect(D3DMetalStore.findLicense(near: lib.resolvingSymlinksInPath(), in: image)?.lastPathComponent == "License.rtf")
         // A third-party LICENSE.txt nearer to lib doesn't win over a license agreement.
         try "Apache License 2.0".write(to: lib.appendingPathComponent("LICENSE.txt"), atomically: true, encoding: .utf8)
-        #expect(D3DMetalStore.findLicense(near: lib, in: image) == image.appendingPathComponent("License.rtf"))
+        #expect(D3DMetalStore.findLicense(near: lib, in: image)?.lastPathComponent == "License.rtf")
     }
 }

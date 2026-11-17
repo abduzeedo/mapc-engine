@@ -251,8 +251,11 @@ public struct D3DMetalStore: Sendable {
     static func findLicense(near lib: URL, in source: URL) -> URL? {
         let fm = FileManager.default
         var candidates: [URL] = []
-        var dir = lib
-        while dir.path.hasPrefix(source.path) {
+        // `locate` finds `lib` through an enumerator, which gives the resolved path (/private/var/folders/...) while
+        // the mount point is /var/folders/...: compare resolved paths, or the walk never starts.
+        let root = source.resolvingSymlinksInPath().standardizedFileURL.path
+        var dir = lib.resolvingSymlinksInPath().standardizedFileURL
+        while dir.path == root || dir.path.hasPrefix(root.hasSuffix("/") ? root : root + "/") {
             for name in ["License.rtf", "LICENSE.rtf", "License.txt", "LICENSE.txt", "LICENSE"] {
                 candidates.append(dir.appendingPathComponent(name))
             }
