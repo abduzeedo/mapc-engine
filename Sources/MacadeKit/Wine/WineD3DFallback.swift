@@ -10,15 +10,19 @@ import Foundation
 /// marker cleared, which also stops `wineboot` from overwriting them), and only `Launcher.exe` is told to
 /// prefer native. Every other program keeps the builtin load order and so keeps D3DMetal. The launcher's
 /// Direct3D 12 probe is switched off too: Apple's d3d12 on Wine's dxgi crashes it, and it only reads GPU info.
+/// So is NVAPI: the launcher loads D3DMetal's `nvapi64`, asks `nvapi_QueryInterface` for a function it doesn't
+/// implement and calls the NULL it gets back. It crashed that way right after "Retrieving apps and packages list"
+/// on every launch, so RDR2 never started (launcher 1.0.110.3150, 2026-11-17); with nvapi off it signs in, gets its
+/// title list and starts the game. The game itself keeps D3DMetal's nvapi.
 public struct WineD3DFallback: Sendable {
     static let modules = ["d3d10", "d3d11", "dxgi"]
     static let apps = ["Launcher.exe"]
     /// Turned off for those apps (the launcher only probes them).
-    static let disabled = ["d3d12", "d3d12core"]
+    static let disabled = ["d3d12", "d3d12core", "nvapi", "nvapi64"]
     /// Lists what we installed, so we only ever remove our own files.
     static let marker = ".macade-wine-d3d"
     /// Bump when the overrides change, so bottles set up earlier get them again.
-    static let revision = 2
+    static let revision = 3
 
     public let paths: Paths
     public init(paths: Paths) { self.paths = paths }
