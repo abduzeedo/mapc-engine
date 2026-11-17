@@ -80,4 +80,18 @@ import Testing
         #expect(FileManager.default.contents(atPath: upc.path) == wrapper)
         #expect(FileManager.default.contents(atPath: upc.deletingLastPathComponent().appendingPathComponent("upc_real.exe").path) == vendor)
     }
+
+    @Test func addsSwiftShaderManifestBesideUbisoftConnectsDriver() throws {
+        let root = dir.appendingPathComponent("bottle")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let bottle = Bottle(kind: .ubisoft, paths: Paths(home: root))
+        let launcher = bottle.driveC.appendingPathComponent("Program Files (x86)/Ubisoft/Ubisoft Game Launcher")
+        try FileManager.default.createDirectory(at: launcher, withIntermediateDirectories: true)
+        #expect(ChromiumHelperWrapper.addSwiftShaderManifests(in: bottle).isEmpty)   // no driver, nothing to name
+        try Data("MZ".utf8).write(to: launcher.appendingPathComponent("vk_swiftshader.dll"))
+        #expect(ChromiumHelperWrapper.addSwiftShaderManifests(in: bottle).count == 1)
+        let json = try JSONSerialization.jsonObject(with: Data(contentsOf: launcher.appendingPathComponent("vk_swiftshader_icd.json"))) as? [String: Any]
+        #expect((json?["ICD"] as? [String: String])?["library_path"] == #".\vk_swiftshader.dll"#)
+        #expect(ChromiumHelperWrapper.addSwiftShaderManifests(in: bottle).isEmpty)   // already there
+    }
 }
