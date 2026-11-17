@@ -113,4 +113,23 @@ private struct FakeToolkit {
             #expect(try FileManager.default.destinationOfSymbolicLink(atPath: so) == "../../external/libd3dshared.dylib")
         }
     }
+
+    @Test func picksApplesLicenseOverTheFrameworksNotice() throws {
+        let fm = FileManager.default
+        let image = fm.temporaryDirectory.appendingPathComponent("macade-gptk-\(UUID().uuidString)")
+        defer { try? fm.removeItem(at: image) }
+        let lib = image.appendingPathComponent("redist/lib")
+        let resources = lib.appendingPathComponent("external/D3DMetal.framework/Versions/A/Resources")
+        try fm.createDirectory(at: resources, withIntermediateDirectories: true)
+        try "xxHash Library\nCopyright (c) 2012-2020 Yann Collet".write(to: resources.appendingPathComponent("LICENSE"), atomically: true, encoding: .utf8)
+        // The framework's notice is all there is: better than nothing.
+        #expect(D3DMetalStore.findLicense(near: lib, in: image)?.lastPathComponent == "LICENSE")
+        // Game Porting Toolkit 4.0 beta 3's layout: Apple's license at the top of the image.
+        try #"{\rtf1 ENGLISH APPLE INC. SOFTWARE LICENSE AGREEMENT FOR GAME PORTING TOOLKIT}"#
+            .write(to: image.appendingPathComponent("License.rtf"), atomically: true, encoding: .utf8)
+        #expect(D3DMetalStore.findLicense(near: lib, in: image) == image.appendingPathComponent("License.rtf"))
+        // A third-party LICENSE.txt nearer to lib doesn't win over a license agreement.
+        try "Apache License 2.0".write(to: lib.appendingPathComponent("LICENSE.txt"), atomically: true, encoding: .utf8)
+        #expect(D3DMetalStore.findLicense(near: lib, in: image) == image.appendingPathComponent("License.rtf"))
+    }
 }
