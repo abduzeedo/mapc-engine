@@ -210,6 +210,7 @@ private func fixtureData(_ name: String) throws -> Data {
         let plain = Game(store: .epic, storeID: "plain", title: "Plain", isInstalled: true)
         #expect(epic.needsUbisoftConnectInstall(for: ubisoftGame))
         #expect(!epic.needsUbisoftConnectInstall(for: plain))
+        #expect(ubisoftGame.startsThroughUbisoftConnect && !plain.startsThroughUbisoftConnect)
     }
 
     @Test func parsesProgressLines() {
