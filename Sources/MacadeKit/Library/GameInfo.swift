@@ -88,7 +88,16 @@ public actor GameInfoService {
 
     // MARK: Steam store API
 
+    /// The Steam game with exactly this title, else, for a demo or trial ("Star Wars Outlaws Demo" from Ubisoft
+    /// Connect), the full game, whose artwork and details fit it: Steam's search doesn't list the demo by that name.
     func steamAppID(matching title: String) async throws -> String? {
+        for candidate in Self.searchTitles(title) {
+            if let id = try await steamAppID(exactly: candidate) { return id }
+        }
+        return nil
+    }
+
+    func steamAppID(exactly title: String) async throws -> String? {
         var c = URLComponents(string: "https://store.steampowered.com/api/storesearch/")!
         c.queryItems = [.init(name: "term", value: Self.searchTerm(title)), .init(name: "cc", value: "us"), .init(name: "l", value: "en")]
         let (data, _) = try await session.data(from: c.url!)
@@ -96,6 +105,17 @@ public actor GameInfoService {
         let items = try JSONDecoder().decode(Search.self, from: data).items
         let wanted = Self.normalized(title)
         return items.first { Self.normalized($0.name) == wanted }.map { String($0.id) }
+    }
+
+    /// The title, then the title without a trailing "Demo", "Trial" or "Starter Access" (with any dash or
+    /// parentheses around it).
+    static func searchTitles(_ title: String) -> [String] {
+        let pattern = #"[\s:\-–—(\[]*\b(demo|trial|starter access|free trial)[\s)\]]*$"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else { return [title] }
+        let range = NSRange(title.startIndex..., in: title)
+        let base = regex.stringByReplacingMatches(in: title, range: range, withTemplate: "")
+            .trimmingCharacters(in: .whitespaces)
+        return base.isEmpty || base == title ? [title] : [title, base]
     }
 
     func details(appID: String) async throws -> GameInfo? {
