@@ -38,9 +38,33 @@ public enum ChromiumHelperWrapper {
     /// the bottle runs; a helper the vendor restored (update, repair) is wrapped again on the next launch.
     @discardableResult
     public static func apply(to bottle: Bottle, engine: Engine, bundled: URL? = bundledWrapper) -> [String] {
+        if bottle.exists { addSwiftShaderManifests(in: bottle) }
         guard bottle.exists, let wrapper = wrapper(in: engine, bundled: bundled) else { return [] }
         return helpers.filter { path in
             (try? wrap(bottle.driveC.appendingPathComponent(path), with: wrapper)) == true
+        }
+    }
+
+    /// Folders whose Chromium ships SwiftShader's Vulkan driver (`vk_swiftshader.dll`) without the manifest that names
+    /// it. With `--disable-gpu` Chromium still draws its pages through SwiftShader, and without the manifest it finds no
+    /// Vulkan driver: Ubisoft Connect's log filled with `VK_KHR_surface not supported` and `gl_factory_win NOTREACHED`,
+    /// and its window stayed transparent with only the icon showing, in a new Ubisoft Connect environment (2026-11-16).
+    /// The Epic environment's copy, which drew, had the manifest; the installer (175.1.13416) doesn't ship it.
+    static let swiftShaderFolders = ["Program Files (x86)/Ubisoft/Ubisoft Game Launcher"]
+
+    /// Chromium's own `vk_swiftshader_icd.json` (106 bytes, no newline), which points at the DLL beside it.
+    static let swiftShaderManifest = Data(#"{"file_format_version": "1.0.0", "ICD": {"library_path": ".\\vk_swiftshader.dll", "api_version": "1.0.5"}}"#.utf8)
+
+    /// Writes the manifest next to `vk_swiftshader.dll` where it's missing. Returns the folders it was added to.
+    @discardableResult
+    static func addSwiftShaderManifests(in bottle: Bottle) -> [String] {
+        let fm = FileManager.default
+        return swiftShaderFolders.filter { folder in
+            let dir = bottle.driveC.appendingPathComponent(folder)
+            let manifest = dir.appendingPathComponent("vk_swiftshader_icd.json")
+            guard fm.fileExists(atPath: dir.appendingPathComponent("vk_swiftshader.dll").path),
+                  !fm.fileExists(atPath: manifest.path) else { return false }
+            return (try? swiftShaderManifest.write(to: manifest, options: .atomic)) != nil
         }
     }
 

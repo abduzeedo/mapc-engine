@@ -108,6 +108,8 @@ public struct LauncherStore: StoreProvider, Sendable {
             throw failed("installer exited with status \(result.status) and \(launcherExecutable.lastPathComponent) is missing",
                          error, output: result.output)
         }
+        // Ubisoft Connect draws only with upc.exe wrapped and SwiftShader's manifest in place (`ChromiumHelperWrapper`).
+        ChromiumHelperWrapper.apply(to: bottle, engine: engine)
     }
 
     // MARK: Library
@@ -120,8 +122,11 @@ public struct LauncherStore: StoreProvider, Sendable {
         }
     }
 
-    /// Ubisoft Connect records installs under `HKLM\Software\Wow6432Node\Ubisoft\Launcher\Installs\<id>`.
+    /// Ubisoft Connect records installs under `HKLM\Software\Wow6432Node\Ubisoft\Launcher\Installs\<id>`, and each
+    /// game's name in its uninstall entry, `...\CurrentVersion\Uninstall\Uplay Install <id>` ("DisplayName"). The
+    /// folder name is the fallback: it can be shortened or lack the game's symbols, and the full name finds artwork.
     static func ubisoftGames(systemReg: String, bottle: Bottle) -> [Game] {
+        let names = ubisoftDisplayNames(systemReg: systemReg)
         var games: [Game] = []
         var currentID: String?
         let header = #"[Software\\Wow6432Node\\Ubisoft\\Launcher\\Installs\\"#
@@ -139,13 +144,54 @@ public struct LauncherStore: StoreProvider, Sendable {
                 let windowsPath = value.trimmingCharacters(in: CharacterSet(charactersIn: "\""))
                     .replacingOccurrences(of: #"\\"#, with: "/")
                 guard let dir = bottle.unixURL(forWindowsPath: windowsPath) else { continue }
-                let title = dir.lastPathComponent
+                let title = names[id] ?? dir.lastPathComponent
                 guard !title.isEmpty, FileManager.default.fileExists(atPath: dir.path) else { continue }
                 games.append(Game(store: .ubisoft, storeID: id, title: title, isInstalled: true,
                                   installPath: dir, sizeOnDisk: GOGProvider.folderSize(dir)))
             }
         }
         return games.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+    }
+
+    /// Game names by Ubisoft ID, from the uninstall entries Ubisoft Connect writes for each game it installs.
+    static func ubisoftDisplayNames(systemReg: String) -> [String: String] {
+        var names: [String: String] = [:]
+        var currentID: String?
+        let header = #"[software\\wow6432node\\microsoft\\windows\\currentversion\\uninstall\\uplay install "#
+        let key = #""displayname"=""#
+        for raw in systemReg.split(whereSeparator: \.isNewline) {
+            let line = String(raw)
+            if line.hasPrefix("[") {
+                currentID = nil
+                guard line.lowercased().hasPrefix(header) else { continue }
+                let id = line.dropFirst(header.count).prefix { $0 != "]" }
+                if !id.isEmpty, id.allSatisfy(\.isNumber) { currentID = String(id) }
+            } else if let id = currentID, line.lowercased().hasPrefix(key), line.hasSuffix("\"") {
+                let name = registryString(String(line.dropFirst(key.count).dropLast())).trimmingCharacters(in: .whitespaces)
+                if !name.isEmpty { names[id] = name }
+            }
+        }
+        return names
+    }
+
+    /// A string value as Wine writes it in a `.reg` file: `\\`, `\"`, and `\x2122` for characters outside ASCII.
+    static func registryString(_ escaped: String) -> String {
+        var out = ""
+        var chars = escaped[...]
+        while let c = chars.popFirst() {
+            guard c == "\\", let next = chars.popFirst() else { out.append(c); continue }
+            switch next {
+            case "x":
+                let hex = chars.prefix { $0.isHexDigit }.prefix(4)
+                if let code = UInt32(hex, radix: 16), let scalar = Unicode.Scalar(code) {
+                    out.unicodeScalars.append(scalar)
+                } else if hex.isEmpty { out.append("x") }
+                chars = chars.dropFirst(hex.count)
+            case "n": out.append("\n")
+            default: out.append(next)
+            }
+        }
+        return out
     }
 
     /// The EA app installs into `C:\Program Files\EA Games\<Game>`, with `__Installer\installerdata.xml`.

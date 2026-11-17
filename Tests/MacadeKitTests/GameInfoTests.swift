@@ -9,6 +9,15 @@ import Testing
         #expect(GameInfoService.normalized("Kena: Bridge of Spirits") != GameInfoService.normalized("Kena"))
     }
 
+    @Test func demosAlsoSearchTheFullGame() {
+        #expect(GameInfoService.searchTitles("Star Wars Outlaws Demo") == ["Star Wars Outlaws Demo", "Star Wars Outlaws"])
+        #expect(GameInfoService.searchTitles("Trackmania - Starter Access") == ["Trackmania - Starter Access", "Trackmania"])
+        #expect(GameInfoService.searchTitles("Anno 1800 (Trial)") == ["Anno 1800 (Trial)", "Anno 1800"])
+        #expect(GameInfoService.searchTitles("Rayman Origins") == ["Rayman Origins"])
+        #expect(GameInfoService.searchTitles("Demo") == ["Demo"])
+        #expect(GameInfoService.searchTitles("Demolition Crew") == ["Demolition Crew"])
+    }
+
     @Test func searchTermDropsWhatSteamSearchChokesOn() {
         #expect(GameInfoService.searchTerm("STAR WARS Jedi - Fallen Order™") == "STAR WARS Jedi Fallen Order")
         #expect(GameInfoService.searchTerm("Marvel's Guardians of the Galaxy") == "Marvel's Guardians of the Galaxy")

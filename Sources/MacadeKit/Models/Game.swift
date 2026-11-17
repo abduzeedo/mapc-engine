@@ -37,6 +37,10 @@ public struct Game: Identifiable, Codable, Hashable, Sendable {
     /// Ubisoft games bought on Epic.
     public var requiredLauncher: StoreKind?
 
+    /// Ubisoft Connect starts the game: bought from Ubisoft, or a Ubisoft game bought on Epic. Ubisoft Connect hangs on
+    /// the DXVK engine, so these run on the CrossOver-based one (`GraphicsBackend.resolved(needsUbisoftConnect:)`).
+    public var startsThroughUbisoftConnect: Bool { store == .ubisoft || requiredLauncher == .ubisoft }
+
     public init(store: StoreKind, storeID: String, title: String, isInstalled: Bool,
                 installPath: URL? = nil, sizeOnDisk: Int64? = nil,
                 coverURL: URL? = nil, heroURL: URL? = nil, installProgress: Double? = nil,

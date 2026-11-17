@@ -85,6 +85,21 @@ import Testing
         let games = LauncherStore.ubisoftGames(systemReg: reg, bottle: bottle)
         #expect(games.map(\.id) == ["ubisoft:46"])
         #expect(games.first?.title == "Far Cry 3")
+        #expect(games.first?.startsThroughUbisoftConnect == true)
+
+        // The uninstall entry Ubisoft Connect writes has the game's full name.
+        let named = reg + #"""
+
+        [Software\\Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Uplay Install 46] 1700000003
+        "DisplayName"="Far Cry\x00ae 3 \\ \"Classic\""
+        "InstallLocation"="C:\\Program Files (x86)\\Ubisoft\\Ubisoft Game Launcher\\games\\Far Cry 3\\"
+        """#
+        #expect(LauncherStore.ubisoftGames(systemReg: named, bottle: bottle).first?.title == "Far Cry® 3 \\ \"Classic\"")
+    }
+
+    @Test func registryStrings() {
+        #expect(LauncherStore.registryString(#"Tom Clancy\x2019s The Division\x2122"#) == "Tom Clancy’s The Division™")
+        #expect(LauncherStore.registryString(#"Caf\xe9 \"x\" C:\\Games"#) == #"Café "x" C:\Games"#)
     }
 
     @Test func eaContentID() {
