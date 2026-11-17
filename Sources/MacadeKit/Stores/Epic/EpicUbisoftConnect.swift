@@ -52,5 +52,8 @@ extension EpicProvider {
             throw failed("installer exited with status \(result.status) and UbisoftConnect.exe is missing", error,
                          output: result.output)
         }
+        // Play wraps upc.exe and adds SwiftShader's manifest before it installs Ubisoft Connect, so the first start
+        // would have neither: its window stays white or transparent. Do it now that the files are there.
+        ChromiumHelperWrapper.apply(to: bottle, engine: engine)
     }
 }

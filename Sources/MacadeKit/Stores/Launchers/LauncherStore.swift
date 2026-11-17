@@ -108,6 +108,8 @@ public struct LauncherStore: StoreProvider, Sendable {
             throw failed("installer exited with status \(result.status) and \(launcherExecutable.lastPathComponent) is missing",
                          error, output: result.output)
         }
+        // Ubisoft Connect draws only with upc.exe wrapped and SwiftShader's manifest in place (`ChromiumHelperWrapper`).
+        ChromiumHelperWrapper.apply(to: bottle, engine: engine)
     }
 
     // MARK: Library
