@@ -126,6 +126,13 @@ public struct LogDiagnosis: Equatable, Sendable {
                 "Some of the game's shaders don't translate from Vulkan to Metal, so objects or effects can be missing. DXMT translates DirectX 11 to Metal directly.",
                 dxmtAvailable ? .useBackend(.dxmt) : .installExtendedEngine, e)
         }
+        // The Rockstar Games Launcher draws its window with Direct2D, which needs SwapDeviceContextState. DXMT logs it as
+        // missing and the launcher shows "failed to initialize" (GTA V from Epic, 2026-11-19). Its log names its folder.
+        if let e = line("SwapDeviceContextState"), lines.contains(where: Self.isRockstarLauncherLine) {
+            add("rockstar-launcher-graphics", "The Rockstar Games Launcher can't start with this Graphics option",
+                "The launcher that starts Rockstar games can't draw its window with DXMT, so it says it failed to initialize and the game never starts. With D3DMetal, MaPC gives the launcher Wine's own graphics and the game keeps D3DMetal.",
+                d3dMetalAvailable ? .useBackend(.d3dMetal) : .setUpDirectX12, e)
+        }
         if let e = line("ImportSharedTexture: Invalid shared handle type") {
             // Seen with The Lion's Song: its video player decodes into a shared Direct3D 9 surface and opens it in
             // Direct3D 11. Wine's Direct3D 9 doesn't share surfaces yet, so the handle is empty and the game crashes.
@@ -257,6 +264,11 @@ public struct LogDiagnosis: Equatable, Sendable {
             return true
         }
         return lines.contains { $0.range(of: #"\b(gta5(_enhanced)?(_be)?|playgtav)\.exe\b"#, options: [.regularExpression, .caseInsensitive]) != nil }
+    }
+
+    /// A line naming the Rockstar Games Launcher's folder. Wine writes paths with single or doubled backslashes.
+    static func isRockstarLauncherLine(_ line: String) -> Bool {
+        line.replacingOccurrences(of: #"\\"#, with: #"\"#).localizedCaseInsensitiveContains(#"Rockstar Games\Launcher"#)
     }
 
     static func trim(_ line: String) -> String {

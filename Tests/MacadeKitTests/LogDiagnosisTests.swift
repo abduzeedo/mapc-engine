@@ -195,6 +195,23 @@ import Testing
         #expect(ids(LogDiagnosis(log: crash)) == ["crash"])
     }
 
+    @Test func rockstarLauncherOnDXMT() {
+        // GTA V from Epic on DXMT, 2026-11-18: the launcher said "failed to initialize".
+        let log = #"""
+        [MaPC] Launch 2026-11-18T08:02:21Z engine=2.0.2 wine=11.0 (CrossOver 26.3.0) environment=epic backend=dxmt
+        0024:warn:module:find_builtin_dll cannot find builtin library for L"\\??\\C:\\Program Files\\Rockstar Games\\Launcher\\Launcher.exe"
+        012c:warn:module:load_dll Failed to load module L"D3D12.DLL"; status=c0000135
+        err:   src/d3d11/d3d11_context_impl.cpp:SwapDeviceContextState: "SwapDeviceContextState".
+        """#
+        let d = LogDiagnosis(log: log, d3dMetalAvailable: true)
+        #expect(ids(d) == ["rockstar-launcher-graphics"])
+        #expect(d.findings[0].action == .useBackend(.d3dMetal))
+        #expect(LogDiagnosis(log: log).findings.first?.action == .setUpDirectX12)
+        // The same DXMT line from another game isn't about the launcher.
+        #expect(!ids(LogDiagnosis(log: #"err:   src/d3d11/d3d11_context_impl.cpp:SwapDeviceContextState: "SwapDeviceContextState"."#))
+            .contains("rockstar-launcher-graphics"))
+    }
+
     @Test func gtaVBattlEyeBlocksOnlyOnline() {
         // BattlEye's service lives in Common Files, so the line doesn't name the game; the title does.
         let log = #"0140:err:module:process_init L"C:\\Program Files (x86)\\Common Files\\BattlEye\\BEService_x64.exe" failed"#

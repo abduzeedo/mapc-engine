@@ -13,14 +13,23 @@ public struct GraphicsProbe: Codable, Sendable, Equatable {
     /// Kernel-level anti-cheat shipped with the game ("BattlEye", "EasyAntiCheat"), found by its folder or
     /// installer. It can't run on a Mac. PUBG's launch log never names its BattlEye, so the folder is the only clue.
     public var antiCheat: String?
+    /// The game starts through the Rockstar Games Launcher (GTA V, Red Dead Redemption 2, Max Payne 3): its
+    /// `Play<Game>.exe` starter is in the folder, or the launcher's installer that ships with the game.
+    public var startsThroughRockstarLauncher = false
 
     public init(usesDirectX12: Bool = false, has64BitExecutable: Bool = false, uses32BitDirect3D11: Bool = false,
-                antiCheat: String? = nil) {
+                antiCheat: String? = nil, startsThroughRockstarLauncher: Bool = false) {
         self.usesDirectX12 = usesDirectX12
         self.has64BitExecutable = has64BitExecutable
         self.uses32BitDirect3D11 = uses32BitDirect3D11
         self.antiCheat = antiCheat
+        self.startsThroughRockstarLauncher = startsThroughRockstarLauncher
     }
+
+    /// The small starters Rockstar's PC games ship (they open the Rockstar Games Launcher, which starts the game),
+    /// and the launcher installer some of them carry in an `Installers` folder. Lowercased.
+    static let rockstarStarters: Set<String> = ["playgtav.exe", "playrdr2.exe", "playmaxpayne3.exe"]
+    static let rockstarLauncherInstaller = "Rockstar-Games-Launcher.exe"
 
     /// The anti-cheat a folder or file belongs to, by its name (lowercased): BattlEye's folder and service,
     /// Easy Anti-Cheat's folders, setup and the launcher it starts games through.
@@ -67,7 +76,13 @@ public struct GraphicsProbe: Codable, Sendable, Equatable {
             if probe.antiCheat == nil {
                 probe.antiCheat = antiCheat(named: name, isDirectory: values?.isDirectory == true)
             }
+            if rockstarStarters.contains(name) { probe.startsThroughRockstarLauncher = true }
             if values?.isDirectory == true {
+                // Installer folders are skipped below, so look for the launcher's installer directly.
+                if name == "installers",
+                   FileManager.default.fileExists(atPath: url.appendingPathComponent(rockstarLauncherInstaller).path) {
+                    probe.startsThroughRockstarLauncher = true
+                }
                 let depth = url.standardizedFileURL.pathComponents.count - base
                 if depth >= maxDepth || skippedFolders.contains(where: name.contains) { walker.skipDescendants() }
                 continue
