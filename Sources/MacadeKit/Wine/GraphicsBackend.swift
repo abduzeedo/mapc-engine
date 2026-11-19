@@ -23,6 +23,14 @@ public enum GraphicsBackend: String, Codable, Sendable, CaseIterable {
     public func resolved(for probe: GraphicsProbe? = nil, d3dMetalAvailable: Bool = false,
                          dxmtAvailable: Bool = false, gameID: String? = nil,
                          needsUbisoftConnect: Bool = false) -> GraphicsBackend {
+        // Rockstar games start through the Rockstar Games Launcher, which inherits the game's graphics. It draws with
+        // Direct2D, which needs `SwapDeviceContextState`, and DXMT doesn't have it: the launcher says "failed to
+        // initialize" and the game never starts (GTA V from Epic on DXMT, 2026-11-19). On D3DMetal, `WineD3DFallback`
+        // gives the launcher Wine's own Direct3D while the game keeps D3DMetal, so these games go there, even when
+        // DXMT was picked by hand: on DXMT they can't start at all.
+        if d3dMetalAvailable, probe?.startsThroughRockstarLauncher == true, self == .auto || self == .dxmt {
+            return .d3dMetal
+        }
         guard self == .auto else { return self }
         if d3dMetalAvailable && probe?.usesDirectX12 == true { return .d3dMetal }
         if needsUbisoftConnect && probe?.uses32BitDirect3D11 != true {

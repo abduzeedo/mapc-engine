@@ -102,6 +102,20 @@ func makePE(machine: UInt16 = 0x8664, imports: [String] = [], delayImports: [Str
         #expect(GraphicsProbe.scan(dir) == GraphicsProbe(uses32BitDirect3D11: true))
     }
 
+    /// GTA V's starter is small and its launcher installer sits in a folder the scan skips.
+    @Test func findsRockstarLauncherGames() throws {
+        let gtaV = try gameFolder(["GTA5.exe": big(makePE(imports: ["d3d11.dll"])), "PlayGTAV.exe": makePE(imports: [])])
+        defer { try? FileManager.default.removeItem(at: gtaV) }
+        #expect(GraphicsProbe.scan(gtaV) == GraphicsProbe(has64BitExecutable: true, startsThroughRockstarLauncher: true))
+        let installer = try gameFolder(["Game.exe": big(makePE(imports: ["d3d11.dll"])),
+                                        "Installers/Rockstar-Games-Launcher.exe": Data()])
+        defer { try? FileManager.default.removeItem(at: installer) }
+        #expect(GraphicsProbe.scan(installer).startsThroughRockstarLauncher)
+        let other = try gameFolder(["Game.exe": big(makePE(imports: ["d3d11.dll"])), "Installers/setup.exe": Data()])
+        defer { try? FileManager.default.removeItem(at: other) }
+        #expect(!GraphicsProbe.scan(other).startsThroughRockstarLauncher)
+    }
+
     /// PUBG keeps BattlEye four folders down, next to its game binary.
     @Test func findsAntiCheatFolders() throws {
         let pubg = try gameFolder(["TslGame/Binaries/Win64/TslGame.exe": big(makePE(imports: ["d3d11.dll"])),

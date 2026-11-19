@@ -85,6 +85,17 @@ private func fixtureData(_ name: String) throws -> Data {
         #expect(GraphicsBackend.dxvk.resolved(for: dx11, d3dMetalAvailable: true, needsUbisoftConnect: true) == .dxvk)
     }
 
+    /// The Rockstar Games Launcher can't draw on DXMT, and only D3DMetal gives it Wine's Direct3D (`WineD3DFallback`).
+    @Test func rockstarGamesGoToD3DMetal() {
+        let gtaV = GraphicsProbe(has64BitExecutable: true, startsThroughRockstarLauncher: true)
+        #expect(GraphicsBackend.auto.resolved(for: gtaV, d3dMetalAvailable: true, dxmtAvailable: true) == .d3dMetal)
+        #expect(GraphicsBackend.dxmt.resolved(for: gtaV, d3dMetalAvailable: true, dxmtAvailable: true) == .d3dMetal)
+        #expect(GraphicsBackend.dxvk.resolved(for: gtaV, d3dMetalAvailable: true) == .dxvk)          // DXVK keeps the user's pick
+        #expect(GraphicsBackend.wined3d.resolved(for: gtaV, d3dMetalAvailable: true) == .wined3d)
+        #expect(GraphicsBackend.dxmt.resolved(for: gtaV, dxmtAvailable: true) == .dxmt)               // nothing better to offer
+        #expect(GraphicsBackend.auto.resolved(for: gtaV) == .dxvk)
+    }
+
     @Test func d3dMetalGetsCrossOverVariablesFromItsEngine() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("macade-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: root) }
