@@ -1,6 +1,6 @@
 // Chromium helper wrapper: re-launches the real helper (<own name>_real.exe) with extra Chromium flags.
 // Wine's CEF paints black windows with GPU compositing, so we force software rendering.
-// Used for Steam's steamwebhelper.exe and Rockstar's SocialClubHelper.exe.
+// Used for Steam's steamwebhelper.exe, Rockstar's SocialClubHelper.exe, Ubisoft's upc.exe and HoYoPlay's HYP.exe.
 // Build: x86_64-w64-mingw32-gcc -O2 -municode -mwindows -static -o steamwebhelper.exe wrapper.c
 #include <windows.h>
 #include <wchar.h>
