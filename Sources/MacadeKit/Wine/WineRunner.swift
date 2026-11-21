@@ -67,6 +67,13 @@ public struct WineRunner: Sendable {
     static let inheritedKeys = ["HOME", "USER", "LOGNAME", "TMPDIR", "PATH", "LANG", "LC_ALL", "SHELL"]
 
     /// `profile.backend` should already be resolved for the game (`.auto` falls back to DXVK here).
+    /// The Microsoft Visual C++ runtime DLLs a game or its Steam redistributable installed prefer the real ones over
+    /// Wine's builtins, and Wine's builtins take over where none is installed. Without this the builtin answers
+    /// every version query: Wine's msvcp140_2.dll says 14.42 while the installed runtime is 14.51, so Unreal Engine 5
+    /// launchers (Final Fantasy Resonance Demo, 2026-11-21) decide the runtime is too old, show "Microsoft Visual
+    /// C++ 2015-2022 Redistributable (x64) is required" and exit with code 9001.
+    static let nativeRuntimeOverride = "msvcp140,msvcp140_1,msvcp140_2,msvcp140_atomic_wait,vcruntime140,vcruntime140_1,concrt140,vcomp140=n,b"
+
     public static func environment(
         bottle: Bottle,
         profile: LaunchProfile,
@@ -93,7 +100,7 @@ public struct WineRunner: Sendable {
         // let a game pick up the native Direct3D DLLs that `WineD3DFallback` puts in System32 for one launcher.
         let shipsBackend = engine.map { $0.info.backends.contains(backend.rawValue) } ?? true
         let backendOverrides = shipsBackend ? backend.overrides : []
-        let overrides = [bottle.hasMono || engine?.shipsMono == true ? "mshtml=" : "mscoree,mshtml=", "winemenubuilder.exe=d"] + backendOverrides + extraOverrides
+        let overrides = [bottle.hasMono || engine?.shipsMono == true ? "mshtml=" : "mscoree,mshtml=", "winemenubuilder.exe=d", Self.nativeRuntimeOverride] + backendOverrides + extraOverrides
         env["WINEDLLOVERRIDES"] = overrides.joined(separator: ";")
 
         for (k, v) in backend.environment { env[k] = v }
