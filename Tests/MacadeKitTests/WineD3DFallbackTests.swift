@@ -114,6 +114,6 @@ private func dll(marker: String = "Wine builtin DLL", body: String = "wine d3d")
         let engine = try #require(Engine(directory: dir))
         let bottle = Bottle(kind: .steam, paths: Paths(home: URL(fileURLWithPath: "/tmp/m")))
         let env = WineRunner.environment(bottle: bottle, profile: LaunchProfile(), engine: engine, base: [:])
-        #expect(env["WINEDLLOVERRIDES"] == "mscoree,mshtml=;winemenubuilder.exe=d")
+        #expect(env["WINEDLLOVERRIDES"] == "mscoree,mshtml=;winemenubuilder.exe=d;msvcp140,msvcp140_1,msvcp140_2,msvcp140_atomic_wait,vcruntime140,vcruntime140_1,concrt140,vcomp140=n,b")
     }
 }

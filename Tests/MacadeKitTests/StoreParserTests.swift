@@ -223,10 +223,10 @@ import Testing
         var profile = LaunchProfile()
         profile.backend = .wined3d     // adds no DLL overrides of its own
         #expect(!bottle.hasMono)
-        #expect(WineRunner.environment(bottle: bottle, profile: profile)["WINEDLLOVERRIDES"] == "mscoree,mshtml=;winemenubuilder.exe=d")
+        #expect(WineRunner.environment(bottle: bottle, profile: profile)["WINEDLLOVERRIDES"] == "mscoree,mshtml=;winemenubuilder.exe=d;msvcp140,msvcp140_1,msvcp140_2,msvcp140_atomic_wait,vcruntime140,vcruntime140_1,concrt140,vcomp140=n,b")
         try FileManager.default.createDirectory(at: bottle.driveC.appendingPathComponent("windows/mono/mono-2.0"), withIntermediateDirectories: true)
         #expect(bottle.hasMono)
-        #expect(WineRunner.environment(bottle: bottle, profile: profile)["WINEDLLOVERRIDES"] == "mshtml=;winemenubuilder.exe=d")
+        #expect(WineRunner.environment(bottle: bottle, profile: profile)["WINEDLLOVERRIDES"] == "mshtml=;winemenubuilder.exe=d;msvcp140,msvcp140_1,msvcp140_2,msvcp140_atomic_wait,vcruntime140,vcruntime140_1,concrt140,vcomp140=n,b")
     }
 
     @Test func engineThatShipsMonoUnblocksMscoree() throws {
@@ -244,7 +244,7 @@ import Testing
         #expect(WineRunner.environment(bottle: bottle, profile: profile, engine: engine)["WINEDLLOVERRIDES"]?.hasPrefix("mscoree,") == true)
         try FileManager.default.createDirectory(at: dir.appendingPathComponent("wine/share/wine/mono/wine-mono-11.3.0"), withIntermediateDirectories: true)
         #expect(engine.shipsMono)
-        #expect(WineRunner.environment(bottle: bottle, profile: profile, engine: engine)["WINEDLLOVERRIDES"] == "mshtml=;winemenubuilder.exe=d")
+        #expect(WineRunner.environment(bottle: bottle, profile: profile, engine: engine)["WINEDLLOVERRIDES"] == "mshtml=;winemenubuilder.exe=d;msvcp140,msvcp140_1,msvcp140_2,msvcp140_atomic_wait,vcruntime140,vcruntime140_1,concrt140,vcomp140=n,b")
     }
 
     @Test func monoPinMatchesWinesOwn() {

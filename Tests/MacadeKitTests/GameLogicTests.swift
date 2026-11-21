@@ -19,7 +19,7 @@ private func fixtureData(_ name: String) throws -> Data {
             "WINEPREFIX": "/tmp/m/Bottles/steam",
             "WINEDEBUG": "-all,err+module", "MVK_CONFIG_LOG_LEVEL": "1",
             "WINEESYNC": "1", "WINEMSYNC": "1", "ROSETTA_ADVERTISE_AVX": "1",
-            "WINEDLLOVERRIDES": "mscoree,mshtml=;winemenubuilder.exe=d;d3d11,d3d10core=n,b",
+            "WINEDLLOVERRIDES": "mscoree,mshtml=;winemenubuilder.exe=d;msvcp140,msvcp140_1,msvcp140_2,msvcp140_atomic_wait,vcruntime140,vcruntime140_1,concrt140,vcomp140=n,b;d3d11,d3d10core=n,b",
             "DXVK_ASYNC": "1", "MVK_CONFIG_RESUME_LOST_DEVICE": "1",
             "CX_REPORT_REAL_USERNAME": "1",
             "SDL_GAMECONTROLLERCONFIG_FILE": "/tmp/m/Bottles/steam/sdl-controller-mappings.txt",
@@ -56,7 +56,7 @@ private func fixtureData(_ name: String) throws -> Data {
         var p = LaunchProfile()
         p.backend = .wined3d
         let env = WineRunner.environment(bottle: bottle, profile: p, base: [:])
-        #expect(env["WINEDLLOVERRIDES"] == "mscoree,mshtml=;winemenubuilder.exe=d")
+        #expect(env["WINEDLLOVERRIDES"] == "mscoree,mshtml=;winemenubuilder.exe=d;msvcp140,msvcp140_1,msvcp140_2,msvcp140_atomic_wait,vcruntime140,vcruntime140_1,concrt140,vcomp140=n,b")
         #expect(env["DXVK_ASYNC"] == nil)
     }
 
@@ -106,7 +106,7 @@ private func fixtureData(_ name: String) throws -> Data {
         #expect(env["CX_APPLEGPTK_LIBD3DSHARED_PATH"] == engine.wineRoot.appendingPathComponent("lib/external/libd3dshared.dylib").path)
         #expect(env["CX_ACTIVE_GRAPHICS_BACKEND"] == "d3dmetal")
         #expect(env["D3DM_SUPPORT_DXR"] == "1")
-        #expect(env["WINEDLLOVERRIDES"] == "mscoree,mshtml=;winemenubuilder.exe=d")     // D3DMetal DLLs are builtins
+        #expect(env["WINEDLLOVERRIDES"] == "mscoree,mshtml=;winemenubuilder.exe=d;msvcp140,msvcp140_1,msvcp140_2,msvcp140_atomic_wait,vcruntime140,vcruntime140_1,concrt140,vcomp140=n,b")     // D3DMetal DLLs are builtins
         #expect(env["DXVK_ASYNC"] == nil)
 
         p.backend = .dxvk                                                                // same engine, other backend
