@@ -244,11 +244,18 @@ public struct D3DMetalStore: Sendable {
         return nil
     }
 
-    private static func findLicense(near lib: URL, in source: URL) -> URL? {
+    /// Apple's license for the toolkit: `License.rtf` at the top of the evaluation environment's image, a few folders
+    /// above `redist/lib`. The framework's own `Resources/LICENSE` is xxHash's notice, not Apple's: picked first, it
+    /// was shown as "Apple's license" at import (Game Porting Toolkit 4.0 beta 3, 2026-11-16). So walk up from `lib`
+    /// first, prefer a file that reads like a license agreement, and keep the framework's notice as the last resort.
+    static func findLicense(near lib: URL, in source: URL) -> URL? {
         let fm = FileManager.default
-        var candidates = [lib.appendingPathComponent("external/D3DMetal.framework/Versions/A/Resources/LICENSE")]
-        var dir = lib
-        while dir.path.hasPrefix(source.path) {
+        var candidates: [URL] = []
+        // `locate` finds `lib` through an enumerator, which gives the resolved path (/private/var/folders/...) while
+        // the mount point is /var/folders/...: compare resolved paths, or the walk never starts.
+        let root = source.resolvingSymlinksInPath().standardizedFileURL.path
+        var dir = lib.resolvingSymlinksInPath().standardizedFileURL
+        while dir.path == root || dir.path.hasPrefix(root.hasSuffix("/") ? root : root + "/") {
             for name in ["License.rtf", "LICENSE.rtf", "License.txt", "LICENSE.txt", "LICENSE"] {
                 candidates.append(dir.appendingPathComponent(name))
             }
@@ -256,7 +263,17 @@ public struct D3DMetalStore: Sendable {
             if parent == dir { break }
             dir = parent
         }
-        return candidates.first { fm.fileExists(atPath: $0.path) }
+        candidates.append(lib.appendingPathComponent("external/D3DMetal.framework/Versions/A/Resources/LICENSE"))
+        let existing = candidates.filter { fm.fileExists(atPath: $0.path) }
+        return existing.first(where: isLicenseAgreement) ?? existing.first
+    }
+
+    /// Whether the file is a software license agreement (Apple's begins "SOFTWARE LICENSE AGREEMENT FOR GAME
+    /// PORTING TOOLKIT"), not a third-party notice. RTF keeps its text readable.
+    static func isLicenseAgreement(_ file: URL) -> Bool {
+        guard let data = FileManager.default.contents(atPath: file.path) else { return false }
+        let text = String(decoding: data.prefix(64 << 10), as: UTF8.self)
+        return text.range(of: "license agreement", options: .caseInsensitive) != nil
     }
 
     /// True only for code signed by Apple itself (not a third-party Developer ID), with every nested item intact.
