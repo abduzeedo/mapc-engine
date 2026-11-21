@@ -5,6 +5,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var onboardingCompleted = false
     public var activeEngineVersion: String?
     public var gamesFolder: URL?
+    /// Where the Windows environments live, when not in MaPC's folder in Application Support: a folder the user
+    /// picked, often on an external drive. They are in its `MaPC Environments` folder (`Paths.bottles`).
+    public var environmentsFolder: URL?
     public var verboseLogs = false
     public var engineManifestURL: URL?
     /// Retina mode last written into each bottle's registry. No longer used: launches read the registry itself

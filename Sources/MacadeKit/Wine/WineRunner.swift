@@ -8,6 +8,8 @@ public enum WineRunnerError: Error, LocalizedError {
     case rosettaMissing
     /// Files the engine needs are gone (see `Engine.missingCoreFiles`); reinstalling the engine brings them back.
     case engineDamaged(version: String, missing: [String])
+    /// The environments are in a folder the user picked on a drive that isn't connected (`Paths.environmentsAvailable`).
+    case environmentsDriveMissing(String?)
 
     public var errorDescription: String? {
         switch self {
@@ -18,6 +20,8 @@ public enum WineRunnerError: Error, LocalizedError {
             "Rosetta 2 isn't installed on this Mac. Windows programs are built for Intel chips, and Rosetta translates them, so nothing can start without it."
         case .engineDamaged(let version, _):
             "Engine \(version) is missing files it needs, so nothing can start with it. Reinstall the engine; your games and their environments stay as they are."
+        case .environmentsDriveMissing(let name):
+            "MaPC keeps its Windows environments on \(name.map { "“\($0)”" } ?? "a drive"), which isn't connected. Connect it and try again."
         }
     }
 
@@ -157,6 +161,7 @@ public struct WineRunner: Sendable {
         logID: String,
         onExit: (@Sendable (Int32) -> Void)? = nil
     ) throws -> RunningProcess {
+        guard paths.environmentsAvailable else { throw WineRunnerError.environmentsDriveMissing(paths.environmentsDriveName) }
         guard bottle.exists else { throw WineRunnerError.bottleMissing(bottle.kind) }
         try paths.createDirectories()
         let logURL = try logs.newLog(for: logID)

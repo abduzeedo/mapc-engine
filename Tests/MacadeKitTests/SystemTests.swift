@@ -134,3 +134,106 @@ private final class Box: @unchecked Sendable {
         #expect(r.macOS == .ok)
     }
 }
+
+@Suite struct EnvironmentsLocationTests {
+    func tempDir() throws -> URL {
+        let u = FileManager.default.temporaryDirectory.appendingPathComponent("mapc-env-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: u, withIntermediateDirectories: true)
+        return u
+    }
+
+    @Test func defaultIsInHome() {
+        let p = Paths(home: URL(fileURLWithPath: "/tmp/macade-test", isDirectory: true), environmentsFolder: nil)
+        #expect(p.bottles.path == "/tmp/macade-test/Bottles")
+        #expect(p.environmentsAvailable)
+    }
+
+    @Test func pickedFolderHoldsTheEnvironments() throws {
+        let folder = try tempDir()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let p = Paths(home: URL(fileURLWithPath: "/tmp/macade-test", isDirectory: true), environmentsFolder: folder)
+        #expect(p.bottle("steam").path == folder.appendingPathComponent("MaPC Environments/steam").path)
+        #expect(p.environmentsAvailable)
+    }
+
+    @Test func missingDriveIsUnavailableAndNothingIsCreated() throws {
+        let home = try tempDir()
+        defer { try? FileManager.default.removeItem(at: home) }
+        let gone = URL(fileURLWithPath: "/Volumes/MaPC-Test-\(UUID().uuidString)/Games", isDirectory: true)
+        let p = Paths(home: home, environmentsFolder: gone)
+        #expect(!p.environmentsAvailable)
+        #expect(p.environmentsDriveName == gone.pathComponents[2])
+        try p.createDirectories()          // must not try to make the missing drive's folders
+        #expect(!FileManager.default.fileExists(atPath: p.bottles.path))
+    }
+
+    @Test func readsTheSavedFolderFromSettings() throws {
+        let home = try tempDir(), folder = try tempDir()
+        defer { try? FileManager.default.removeItem(at: home); try? FileManager.default.removeItem(at: folder) }
+        var settings = AppSettings()
+        settings.environmentsFolder = folder
+        try JSONStore<AppSettings>(url: home.appendingPathComponent("Settings.json")).save(settings)
+        #expect(Paths(home: home).environmentsFolder?.standardizedFileURL == folder.standardizedFileURL)
+        #expect(Paths(home: home).bottles.path == Paths.bottles(in: folder).path)
+    }
+
+    func makeEnvironment(_ bottles: URL, _ name: String) throws {
+        let fm = FileManager.default
+        let env = bottles.appendingPathComponent(name)
+        try fm.createDirectory(at: env.appendingPathComponent("drive_c/windows"), withIntermediateDirectories: true)
+        try fm.createDirectory(at: env.appendingPathComponent("dosdevices"), withIntermediateDirectories: true)
+        try fm.createSymbolicLink(atPath: env.appendingPathComponent("dosdevices/z:").path, withDestinationPath: "/")
+        try fm.createSymbolicLink(atPath: env.appendingPathComponent("dosdevices/c:").path, withDestinationPath: "../drive_c")
+        try Data("save".utf8).write(to: env.appendingPathComponent("drive_c/save.dat"))
+    }
+
+    @Test func copiesKeepingLinksAndLeavesOriginalsUntilAsked() async throws {
+        let root = try tempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let source = root.appendingPathComponent("Bottles"), destination = Paths.bottles(in: root.appendingPathComponent("SSD"))
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("SSD"), withIntermediateDirectories: true)
+        try makeEnvironment(source, "steam")
+        try makeEnvironment(source, "epic")
+        let checked = try EnvironmentMover.plan(from: source, to: destination)
+        #expect(checked.names == ["epic", "steam"])
+        // Force the cross-drive path (ditto), which a temporary folder can't reach otherwise.
+        let plan = EnvironmentMover.Plan(source: source, destination: destination, names: checked.names, sameVolume: false)
+        try await EnvironmentMover.move(plan)
+        let fm = FileManager.default
+        for name in ["steam", "epic"] {
+            let env = destination.appendingPathComponent(name)
+            #expect(try fm.destinationOfSymbolicLink(atPath: env.appendingPathComponent("dosdevices/z:").path) == "/")
+            #expect(try fm.destinationOfSymbolicLink(atPath: env.appendingPathComponent("dosdevices/c:").path) == "../drive_c")
+            #expect(fm.fileExists(atPath: env.appendingPathComponent("drive_c/save.dat").path))
+            #expect(fm.fileExists(atPath: source.appendingPathComponent(name).path))
+        }
+        #expect(!fm.fileExists(atPath: destination.appendingPathComponent(".steam.moving").path))
+        EnvironmentMover.removeOriginals(plan)
+        #expect(EnvironmentMover.environmentNames(in: source).isEmpty)
+    }
+
+    @Test func movesBackAndTidiesTheEmptyFolder() async throws {
+        let root = try tempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let picked = Paths.bottles(in: root), home = root.appendingPathComponent("Home/Bottles")
+        try makeEnvironment(picked, "steam")
+        let plan = try EnvironmentMover.plan(from: picked, to: home)
+        #expect(plan.sameVolume)
+        try await EnvironmentMover.move(plan)
+        EnvironmentMover.removeOriginals(plan)
+        #expect(FileManager.default.fileExists(atPath: home.appendingPathComponent("steam/drive_c/save.dat").path))
+        #expect(!FileManager.default.fileExists(atPath: picked.path))
+    }
+
+    @Test func refusesToOverwriteOrNest() throws {
+        let root = try tempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let source = root.appendingPathComponent("Bottles"), destination = Paths.bottles(in: root)
+        try makeEnvironment(source, "steam")
+        try makeEnvironment(destination, "steam")
+        #expect(throws: EnvironmentMoveError.alreadyThere("Steam")) { try EnvironmentMover.plan(from: source, to: destination) }
+        #expect(throws: EnvironmentMoveError.nested) {
+            try EnvironmentMover.plan(from: source, to: Paths.bottles(in: source.appendingPathComponent("steam")))
+        }
+    }
+}

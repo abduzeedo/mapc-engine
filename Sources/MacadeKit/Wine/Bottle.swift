@@ -50,6 +50,8 @@ public struct BottleManager: Sendable {
     public func ensure(_ kind: BottleKind, engine: Engine) async throws -> Bottle {
         let bottle = Bottle(kind: kind, paths: paths)
         if bottle.exists { return bottle }
+        // Never make a fresh environment in place of one on a drive that isn't connected.
+        guard paths.environmentsAvailable else { throw WineRunnerError.environmentsDriveMissing(paths.environmentsDriveName) }
         try FileManager.default.createDirectory(at: bottle.url, withIntermediateDirectories: true)
         let env = WineRunner.environment(bottle: bottle, profile: LaunchProfile())
         let boot: ProcessResult
