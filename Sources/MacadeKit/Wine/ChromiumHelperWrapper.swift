@@ -45,6 +45,29 @@ public enum ChromiumHelperWrapper {
         }
     }
 
+    /// Launchers that ship inside a game's own install folder, each with a file that must sit beside it, so a
+    /// game's own `HYP.exe` of another kind is left alone. HoYoPlay (`HYP.exe`, Qt with QCefView) is what Epic installs
+    /// as Genshin Impact; the game itself downloads from inside it. Unwrapped on D3DMetal, its GPU process crashed
+    /// three times and the window stayed white; wrapped, it drew and downloaded the game (2026-11-17).
+    /// The wrapper drops DXVK/DXMT's `WINEDLLOVERRIDES`, and the game HoYoPlay starts inherits that: on those
+    /// backends it gets the engine's own Direct3D. D3DMetal (the default on 2.x engines) sets no overrides.
+    static let gameFolderLaunchers: [(launcher: String, besideIt: String)] = [("HYP.exe", "QCefView.dll")]
+
+    /// Puts the wrapper in front of a known launcher in a game's install folder. Like `apply(to:)` it only swaps
+    /// files, so it runs on every Play; a launcher that updated itself is wrapped again.
+    @discardableResult
+    public static func apply(toGameFolder folder: URL, engine: Engine, bundled: URL? = bundledWrapper) -> [String] {
+        let fm = FileManager.default
+        let present = gameFolderLaunchers.filter {
+            fm.fileExists(atPath: folder.appendingPathComponent($0.besideIt).path)
+                && fm.fileExists(atPath: folder.appendingPathComponent($0.launcher).path)
+        }
+        guard !present.isEmpty, let wrapper = wrapper(in: engine, bundled: bundled) else { return [] }
+        return present.map(\.launcher).filter { name in
+            (try? wrap(folder.appendingPathComponent(name), with: wrapper)) == true
+        }
+    }
+
     /// Folders whose Chromium ships SwiftShader's Vulkan driver (`vk_swiftshader.dll`) without the manifest that names
     /// it. With `--disable-gpu` Chromium still draws its pages through SwiftShader, and without the manifest it finds no
     /// Vulkan driver: Ubisoft Connect's log filled with `VK_KHR_surface not supported` and `gl_factory_win NOTREACHED`,

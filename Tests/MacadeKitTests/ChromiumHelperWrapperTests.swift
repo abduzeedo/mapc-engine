@@ -81,6 +81,27 @@ import Testing
         #expect(FileManager.default.contents(atPath: upc.deletingLastPathComponent().appendingPathComponent("upc_real.exe").path) == vendor)
     }
 
+    @Test func wrapsHoYoPlayInAGameFolderOnlyBesideQCefView() throws {
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let game = dir.appendingPathComponent("GenshinImpact")
+        try FileManager.default.createDirectory(at: game, withIntermediateDirectories: true)
+        let hyp = game.appendingPathComponent("HYP.exe")
+        try vendor.write(to: hyp)
+        try #"{"version":"2.0.0","wineVersion":"11","backends":["d3dMetal"],"minMacOS":"14.0"}"#
+            .write(to: dir.appendingPathComponent("ENGINE.json"), atomically: true, encoding: .utf8)
+        let engine = try #require(Engine(directory: dir))
+        let bundled = dir.appendingPathComponent("chromium-helper-wrapper.exe")
+        try wrapper.write(to: bundled)
+        // Some other game's HYP.exe, with no QCefView beside it, stays as it is.
+        #expect(ChromiumHelperWrapper.apply(toGameFolder: game, engine: engine, bundled: bundled).isEmpty)
+        #expect(FileManager.default.contents(atPath: hyp.path) == vendor)
+        try Data("MZ qcefview".utf8).write(to: game.appendingPathComponent("QCefView.dll"))
+        #expect(ChromiumHelperWrapper.apply(toGameFolder: game, engine: engine, bundled: bundled) == ["HYP.exe"])
+        #expect(FileManager.default.contents(atPath: hyp.path) == wrapper)
+        #expect(FileManager.default.contents(atPath: game.appendingPathComponent("HYP_real.exe").path) == vendor)
+        #expect(ChromiumHelperWrapper.apply(toGameFolder: game, engine: engine, bundled: bundled).isEmpty)
+    }
+
     @Test func addsSwiftShaderManifestBesideUbisoftConnectsDriver() throws {
         let root = dir.appendingPathComponent("bottle")
         defer { try? FileManager.default.removeItem(at: dir) }
