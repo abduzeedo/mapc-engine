@@ -211,8 +211,30 @@ private func fixtureData(_ name: String) throws -> Data {
         let byID = Dictionary(uniqueKeysWithValues: games.map { ($0.storeID, $0) })
         #expect(byID["Camellia"]?.requiredLauncher == .ubisoft)
         #expect(byID["partner"]?.requiredLauncher == .ubisoft)
-        #expect(byID["ea"]?.requiredLauncher == nil)
+        #expect(byID["ea"]?.requiredLauncher == .ea)
+        #expect(byID["ea"]?.installsThroughEAApp == true)
         #expect(byID["plain"]?.requiredLauncher == nil)
+    }
+
+    /// `--third-party` adds what Epic can't download: EA games stay (the EA app installs them), the rest is dropped.
+    @Test func keepsEAGamesEpicCantDownload() throws {
+        let list = Data(#"""
+        [
+          {"app_name":"bf2","app_title":"STAR WARS Battlefront II","asset_infos":{},"metadata":{"customAttributes":{
+            "ThirdPartyManagedApp":{"type":"STRING","value":"Origin"}}}},
+          {"app_name":"me","app_title":"Mass Effect Legendary Edition","asset_infos":{},"metadata":{"customAttributes":{
+            "ThirdPartyManagedApp":{"type":"STRING","value":"The EA App"}}}},
+          {"app_name":"other","app_title":"Other Store Game","asset_infos":{},"metadata":{"customAttributes":{
+            "ThirdPartyManagedApp":{"type":"STRING","value":"Battle.net"}}}},
+          {"app_name":"plain","app_title":"Plain Game","asset_infos":{"Windows":{"app_name":"plain","build_version":"1"}},
+           "metadata":{"customAttributes":{}}}
+        ]
+        """#.utf8)
+        let games = try LegendaryParser.games(listJSON: list, installedJSON: Data("[]".utf8))
+        #expect(games.map(\.storeID) == ["me", "plain", "bf2"])
+        #expect(games.filter(\.installsThroughEAApp).map(\.storeID) == ["me", "bf2"])
+        #expect(KnownIssues.note(for: games[0]) == KnownIssues.installsThroughEAApp)
+        #expect(Game(store: .ea, storeID: "1", title: "x", isInstalled: true, requiredLauncher: .ea).installsThroughEAApp == false)
     }
 
     @Test func epicUbisoftGameNeedsUbisoftConnectInstall() {

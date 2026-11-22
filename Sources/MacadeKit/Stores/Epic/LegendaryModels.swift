@@ -21,6 +21,13 @@ struct LegendaryListEntry: Decodable {
     let app_name: String
     let app_title: String
     let metadata: Metadata?
+    /// Epic's downloads by platform. Empty for what Epic can't download at all (listed only with `--third-party`).
+    let asset_infos: [String: IgnoredValue]?
+
+    struct IgnoredValue: Decodable { init(from decoder: Decoder) throws {} }
+
+    /// Epic sells it but can't download it: listed only with `--third-party`.
+    var hasNoDownload: Bool { asset_infos?.isEmpty == true }
 
     /// Unreal Engine content from Fab (materials, plugins, sample projects) is listed with the games.
     var isEngineAsset: Bool { metadata?.categories?.contains { $0.path == "asset-format" } == true }
@@ -29,11 +36,22 @@ struct LegendaryListEntry: Decodable {
     /// `ThirdPartyManagedApp` (or `ThirdPartyManagedProvider`) is Ubisoft Connect, or `partnerLinkType` is `ubisoft`.
     /// The Epic launcher installs Ubisoft Connect for them as a prerequisite; legendary does that only on Windows.
     var needsUbisoftConnect: Bool {
+        thirdPartyStore.contains { $0.contains("ubisoft") || $0.contains("uplay") }
+            || metadata?.customAttributes?["partnerLinkType"]?.value?.lowercased() == "ubisoft"
+    }
+
+    /// EA games sold on Epic (Star Wars Battlefront II, Mass Effect Legendary Edition…) are installed and run by the EA
+    /// app, never by Epic: legendary refuses to install them and lists most only with `--third-party`, as they have
+    /// nothing to download from Epic. Epic marks them "Origin" or "The EA App"; legendary's `is_origin_game`.
+    var installsThroughEAApp: Bool {
+        thirdPartyStore.contains { $0 == "origin" || $0.hasPrefix("theeaapp") || $0 == "eaapp" }
+    }
+
+    /// `ThirdPartyManagedApp` / `ThirdPartyManagedProvider`, lowercased without spaces.
+    private var thirdPartyStore: [String] {
         let attributes = metadata?.customAttributes ?? [:]
-        let thirdParty = [attributes["ThirdPartyManagedApp"]?.value, attributes["ThirdPartyManagedProvider"]?.value]
+        return [attributes["ThirdPartyManagedApp"]?.value, attributes["ThirdPartyManagedProvider"]?.value]
             .compactMap { $0?.lowercased().replacingOccurrences(of: " ", with: "") }
-        return thirdParty.contains { $0.contains("ubisoft") || $0.contains("uplay") }
-            || attributes["partnerLinkType"]?.value?.lowercased() == "ubisoft"
     }
 }
 
@@ -56,7 +74,9 @@ public enum LegendaryParser {
             for t in types { if let u = e.metadata?.keyImages?.first(where: { $0.type == t })?.url { return URL(string: u) } }
             return nil
         }
-        return owned.filter { !$0.isEngineAsset }.map { e in
+        // Of what Epic can't download, only EA games are kept: they install through the EA app. The rest (other
+        // third-party stores) can't be installed by MaPC at all.
+        return owned.filter { !$0.isEngineAsset && (!$0.hasNoDownload || $0.installsThroughEAApp) }.map { e in
             let inst = installed[e.app_name]
             return Game(
                 store: .epic, storeID: e.app_name, title: e.app_title, isInstalled: inst != nil,
@@ -64,7 +84,7 @@ public enum LegendaryParser {
                 sizeOnDisk: inst?.install_size,
                 coverURL: image(e, ["DieselGameBoxTall", "Thumbnail"]),
                 heroURL: image(e, ["DieselGameBox", "OfferImageWide"]),
-                requiredLauncher: e.needsUbisoftConnect ? .ubisoft : nil)
+                requiredLauncher: e.needsUbisoftConnect ? .ubisoft : e.installsThroughEAApp ? .ea : nil)
         }
         .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
     }

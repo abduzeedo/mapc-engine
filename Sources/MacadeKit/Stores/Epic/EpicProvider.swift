@@ -85,8 +85,12 @@ public struct EpicProvider: StoreProvider, Sendable {
     /// 10 s API timeout, so the list failed for that account while a 93-game one worked. Wait up to a minute, and
     /// try once more, since the server can also be slow once. Legendary's output goes to `Logs/epic/`.
     func libraryList() async throws -> Data {
+        // `--third-party` adds games Epic sells but can't download, such as EA games that install through the EA app
+        // (Star Wars Battlefront II from Epic's giveaway was missing from the library, 2026-11-22 report). It makes
+        // legendary ask Epic about each of those too, so the retry leaves it out: one failing title never costs the
+        // whole library.
         let args = Self.apiTimeoutArguments + ["list", "--platform", "Windows", "--json"]
-        do { return try await json(args, logTo: try? runner.logs.newLog(for: kind.rawValue)) }
+        do { return try await json(args + ["--third-party"], logTo: try? runner.logs.newLog(for: kind.rawValue)) }
         catch EpicError.commandFailed {
             return try await json(args, logTo: try? runner.logs.newLog(for: kind.rawValue))
         }
@@ -124,6 +128,7 @@ public struct EpicProvider: StoreProvider, Sendable {
     /// legendary runs with no stdin attached, so a title with optional packs (e.g. language packs) would otherwise
     /// stop to prompt for which to install and crash on EOF; this installs only the required data instead.
     public func install(_ game: Game, onProgress: @escaping @Sendable (Double) -> Void) async throws {
+        if game.installsThroughEAApp { throw EpicError.commandFailed(KnownIssues.installsThroughEAApp) }
         try FileManager.default.createDirectory(at: gamesFolder, withIntermediateDirectories: true)
         try await download(game, ["install", game.storeID, "--platform", "Windows", "--base-path", gamesFolder.path, "-y", "--skip-sdl"],
                            failure: "The install didn't finish. You can resume it.", onProgress: onProgress)
