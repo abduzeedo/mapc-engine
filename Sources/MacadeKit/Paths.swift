@@ -4,24 +4,68 @@ import Foundation
 /// Set `MACADE_HOME` to redirect everything (tests, integration runs).
 public struct Paths: Sendable {
     public let home: URL
+    /// The folder the user picked for the environments (Settings, `AppSettings.environmentsFolder`), for instance on
+    /// an external drive. `nil`: they stay in `home`. Read once, when `Paths` is made: moving them relaunches MaPC.
+    public let environmentsFolder: URL?
+
+    /// The environments go in this folder inside the one the user picked, next to the stores' game folders when it's
+    /// the same folder.
+    public static let environmentsFolderName = "MaPC Environments"
 
     public init(home: URL? = nil) {
+        let resolved = Self.resolveHome(home)
+        self.init(home: resolved, environmentsFolder: Self.savedEnvironmentsFolder(home: resolved))
+    }
+
+    public init(home: URL, environmentsFolder: URL?) {
+        self.home = home
+        self.environmentsFolder = environmentsFolder
+    }
+
+    private static func resolveHome(_ home: URL?) -> URL {
         if let home {
-            self.home = home
+            return home
         } else if let override = ProcessInfo.processInfo.environment["MACADE_HOME"], !override.isEmpty {
-            self.home = URL(fileURLWithPath: override, isDirectory: true)
+            return URL(fileURLWithPath: override, isDirectory: true)
         } else {
             let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            self.home = Self.current(support.appendingPathComponent("MaPC", isDirectory: true),
+            return Self.current(support.appendingPathComponent("MaPC", isDirectory: true),
                                      legacy: ["Arcadexe", "Macade"].map { support.appendingPathComponent($0, isDirectory: true) })
         }
+    }
+
+    /// Only this key of `Settings.json`: `Paths` is made before (and apart from) the settings store.
+    private struct SavedLocation: Decodable { var environmentsFolder: URL? }
+
+    static func savedEnvironmentsFolder(home: URL) -> URL? {
+        guard let data = try? Data(contentsOf: home.appendingPathComponent("Settings.json")) else { return nil }
+        return (try? JSONDecoder().decode(SavedLocation.self, from: data))?.environmentsFolder
     }
 
     public var engines: URL { home.appendingPathComponent("Engines", isDirectory: true) }
     public var tools: URL { home.appendingPathComponent("Tools", isDirectory: true) }
     /// Apple's D3DMetal, copied from the user's own Game Porting Toolkit download (never shipped by Macade).
     public var d3dMetal: URL { home.appendingPathComponent("D3DMetal", isDirectory: true) }
-    public var bottles: URL { home.appendingPathComponent("Bottles", isDirectory: true) }
+    /// The Windows environments (Wine prefixes), one folder per store.
+    public var bottles: URL {
+        environmentsFolder.map { Self.bottles(in: $0) } ?? defaultBottles
+    }
+    /// Where the environments are when the user hasn't picked a folder.
+    public var defaultBottles: URL { home.appendingPathComponent("Bottles", isDirectory: true) }
+    public static func bottles(in folder: URL) -> URL { folder.appendingPathComponent(environmentsFolderName, isDirectory: true) }
+    /// False while the folder the user picked for the environments is missing: its drive isn't connected.
+    /// Nothing may then be created there (macOS would refuse under /Volumes, or worse, fill the Mac's own disk).
+    public var environmentsAvailable: Bool {
+        guard let environmentsFolder else { return true }
+        return FileManager.default.fileExists(atPath: environmentsFolder.path)
+    }
+    /// The name of the drive the environments are on (its name in Finder), for messages.
+    public var environmentsDriveName: String? {
+        guard let environmentsFolder else { return nil }
+        let parts = environmentsFolder.standardizedFileURL.pathComponents
+        if parts.count > 2, parts[1] == "Volumes" { return parts[2] }
+        return (try? environmentsFolder.resourceValues(forKeys: [.volumeLocalizedNameKey]))?.volumeLocalizedName
+    }
     public var artwork: URL { home.appendingPathComponent("Artwork", isDirectory: true) }
     public var logs: URL { home.appendingPathComponent("Logs", isDirectory: true) }
     public var legendaryConfig: URL { home.appendingPathComponent("legendary", isDirectory: true) }
@@ -59,7 +103,7 @@ public struct Paths: Sendable {
     }
 
     public func createDirectories() throws {
-        for dir in [engines, tools, bottles, artwork, logs, legendaryConfig, gogConfig, amazonConfig] {
+        for dir in [engines, tools, artwork, logs, legendaryConfig, gogConfig, amazonConfig] + (environmentsAvailable ? [bottles] : []) {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         }
         // Legendary keeps Epic login tokens here: owner-only, whatever the umask says.
