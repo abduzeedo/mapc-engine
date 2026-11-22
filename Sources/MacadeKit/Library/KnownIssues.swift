@@ -25,10 +25,15 @@ public enum KnownIssues {
     public static let needsUbisoftConnect =
         "This game needs Ubisoft Connect, which MaPC installs the first time you press Play. Ubisoft Connect opens first and starts the game; the first time, it may ask you to sign in. Keep graphics on Automatic, D3DMetal or DXMT: Ubisoft Connect doesn't start with DXVK. Your Epic account also needs to be linked to a Ubisoft account."
 
+    /// Shown for EA games bought on Epic (`Game.installsThroughEAApp`).
+    public static let installsThroughEAApp =
+        "Epic sells this game, but the EA app installs and runs it. Install opens the EA app (MaPC sets it up first if needed): sign in, link your Epic account in the EA app's settings if asked, and install it from the EA app's library, where it has an Epic badge. Once installed it shows under EA app in MaPC."
+
     public static func note(for game: Game, remote: [String: String]? = nil, probe: GraphicsProbe? = nil,
                             d3dMetalAvailable: Bool = false, dxmtAvailable: Bool = false) -> String? {
         if let note = remote?[game.id] ?? builtIn[game.id] { return note }
         if game.requiredLauncher == .ubisoft { return needsUbisoftConnect }
+        if game.installsThroughEAApp { return installsThroughEAApp }
         if let note = PlayStationLinking.note(for: game) { return note }
         if let antiCheat = probe?.antiCheat { return antiCheatNote(antiCheat) }
         if probe?.usesDirectX12 == true && !d3dMetalAvailable { return needsDirectX12Engine }

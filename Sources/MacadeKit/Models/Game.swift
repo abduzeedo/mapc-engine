@@ -33,13 +33,17 @@ public struct Game: Identifiable, Codable, Hashable, Sendable {
     public var heroURL: URL?
     /// 0...1 while the store is installing or updating this game.
     public var installProgress: Double?
-    /// Another store's launcher the game needs running, though a different store sold it: Ubisoft Connect for
-    /// Ubisoft games bought on Epic.
+    /// Another store's launcher the game needs, though a different store sold it: Ubisoft Connect for Ubisoft games
+    /// bought on Epic, the EA app for EA games bought on Epic (which also installs them).
     public var requiredLauncher: StoreKind?
 
     /// Ubisoft Connect starts the game: bought from Ubisoft, or a Ubisoft game bought on Epic. Ubisoft Connect hangs on
     /// the DXVK engine, so these run on the CrossOver-based one (`GraphicsBackend.resolved(needsUbisoftConnect:)`).
     public var startsThroughUbisoftConnect: Bool { store == .ubisoft || requiredLauncher == .ubisoft }
+
+    /// An EA game bought on Epic: Epic can't download it, the EA app installs and runs it, and once installed it is
+    /// listed under the EA app's games (`LauncherStore`), so its Epic entry stays not installed.
+    public var installsThroughEAApp: Bool { store == .epic && requiredLauncher == .ea }
 
     public init(store: StoreKind, storeID: String, title: String, isInstalled: Bool,
                 installPath: URL? = nil, sizeOnDisk: Int64? = nil,
