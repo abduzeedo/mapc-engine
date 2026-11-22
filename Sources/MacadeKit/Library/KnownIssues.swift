@@ -29,6 +29,7 @@ public enum KnownIssues {
                             d3dMetalAvailable: Bool = false, dxmtAvailable: Bool = false) -> String? {
         if let note = remote?[game.id] ?? builtIn[game.id] { return note }
         if game.requiredLauncher == .ubisoft { return needsUbisoftConnect }
+        if let note = PlayStationLinking.note(for: game) { return note }
         if let antiCheat = probe?.antiCheat { return antiCheatNote(antiCheat) }
         if probe?.usesDirectX12 == true && !d3dMetalAvailable { return needsDirectX12Engine }
         if probe?.uses32BitDirect3D11 == true && !dxmtAvailable { return needs32BitDirect3D11Engine }
