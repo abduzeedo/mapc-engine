@@ -179,7 +179,8 @@ public struct EpicProvider: StoreProvider, Sendable {
         guard isSignedIn else { throw EpicError.notSignedIn }
         return try runner.launch(
             program: legendary,
-            arguments: Self.apiTimeoutArguments + ["launch", game.storeID, "--wine", engine.wine.path, "--wine-prefix", bottle.url.path] + profile.extraArguments,
+            arguments: Self.apiTimeoutArguments + ["launch", game.storeID, "--wine", engine.wine.path, "--wine-prefix", bottle.url.path] + profile.extraArguments
+                + PlayStationLinking.arguments(for: game, userArguments: profile.extraArguments),
             engine: engine, bottle: bottle, profile: profile,
             extraEnvironment: ["LEGENDARY_CONFIG_PATH": paths.legendaryConfig.path]
                 .merging(EpicLauncherStandIn.environment(for: game, bottle: bottle)) { a, _ in a },

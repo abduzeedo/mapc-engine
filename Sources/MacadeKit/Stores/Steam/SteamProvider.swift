@@ -101,7 +101,8 @@ public struct SteamProvider: StoreProvider, Sendable {
     @discardableResult
     public func play(_ game: Game, engine: Engine, profile: LaunchProfile,
                      onExit: (@Sendable (Int32) -> Void)? = nil) throws -> RunningProcess {
-        try start(arguments: ["-silent"] + arguments() + ["-applaunch", game.storeID] + profile.extraArguments,
+        try start(arguments: ["-silent"] + arguments() + ["-applaunch", game.storeID] + profile.extraArguments
+                      + PlayStationLinking.arguments(for: game, userArguments: profile.extraArguments),
                   engine: engine, profile: profile, logID: game.id, onExit: onExit)
     }
 
