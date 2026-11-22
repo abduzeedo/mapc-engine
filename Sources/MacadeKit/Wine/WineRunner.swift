@@ -164,6 +164,8 @@ public struct WineRunner: Sendable {
         guard paths.environmentsAvailable else { throw WineRunnerError.environmentsDriveMissing(paths.environmentsDriveName) }
         guard bottle.exists else { throw WineRunnerError.bottleMissing(bottle.kind) }
         try paths.createDirectories()
+        // External drives get their own letter (D: …), so launchers see their real free space (ExternalDrives).
+        ExternalDrives.link(in: bottle.url)
         let logURL = try logs.newLog(for: logID)
         guard let handle = try? FileHandle(forWritingTo: logURL) else {
             throw WineRunnerError.launchFailed("can't open log file")
