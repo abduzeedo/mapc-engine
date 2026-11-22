@@ -181,7 +181,8 @@ public struct EpicProvider: StoreProvider, Sendable {
             program: legendary,
             arguments: Self.apiTimeoutArguments + ["launch", game.storeID, "--wine", engine.wine.path, "--wine-prefix", bottle.url.path] + profile.extraArguments,
             engine: engine, bottle: bottle, profile: profile,
-            extraEnvironment: ["LEGENDARY_CONFIG_PATH": paths.legendaryConfig.path],
+            extraEnvironment: ["LEGENDARY_CONFIG_PATH": paths.legendaryConfig.path]
+                .merging(EpicLauncherStandIn.environment(for: game, bottle: bottle)) { a, _ in a },
             logID: game.id, onExit: onExit)
     }
 
