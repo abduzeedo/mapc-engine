@@ -299,6 +299,13 @@ private func fixtureData(_ name: String) throws -> Data {
 }
 
 @Suite struct KnownIssuesTests {
+    @Test func vulkanShaderGamesHaveNote() {
+        let demo = Game(store: .steam, storeID: "1224230", title: "Detroit: Become Human Demo", isInstalled: true)
+        #expect(KnownIssues.note(for: demo) == KnownIssues.vulkanShaderNote)
+        let remote = ["steam:1224230": "Fixed in a newer engine."]
+        #expect(KnownIssues.note(for: demo, remote: remote) == "Fixed in a newer engine.")
+    }
+
     @Test func builtInAndRemoteNotes() {
         let fortnite = Game(store: .epic, storeID: "Fortnite", title: "Fortnite", isInstalled: false)
         let other = Game(store: .steam, storeID: "1", title: "Other", isInstalled: true)
