@@ -6,6 +6,19 @@ public enum KnownIssues {
         "epic:Fortnite": "Fortnite uses kernel-level anti-cheat that doesn't run on macOS.",
     ]
 
+    /// Vulkan games whose shaders MoltenVK can't turn into Metal, by `Game.id`. Detroit: Become Human draws with Vulkan
+    /// and its vertex shaders read `DrawIndex`, which SPIR-V to Metal translation doesn't support ("DrawIndex is not
+    /// supported in MSL"). The pipelines fail to build and the game exits with code 3 about ten seconds after it starts
+    /// (user report on the demo, MaPC 1.1.38, 10 tries across DXVK, DXMT and WineD3D, 2026-11-24). Graphics doesn't
+    /// matter: it only changes how DirectX reaches Metal. CrossOver users report the same.
+    static let vulkanShaderGames: Set<String> = [
+        "steam:1222140",   // Detroit: Become Human
+        "steam:1224230",   // Detroit: Become Human Demo
+    ]
+
+    static let vulkanShaderNote =
+        "This game draws with Vulkan, and some of its shaders can't be translated to Metal on a Mac yet, so it closes a few seconds after it starts. Changing Graphics doesn't help: it only affects DirectX games."
+
     /// Shown for DirectX 12 games (found by `GraphicsProbe`) while no D3DMetal engine is installed.
     public static let needsDirectX12Engine =
         "This game uses DirectX 12. DirectX 12 compatibility is an advanced option that needs Apple's D3DMetal, which you install yourself under Apple's license."
@@ -32,6 +45,7 @@ public enum KnownIssues {
     public static func note(for game: Game, remote: [String: String]? = nil, probe: GraphicsProbe? = nil,
                             d3dMetalAvailable: Bool = false, dxmtAvailable: Bool = false) -> String? {
         if let note = remote?[game.id] ?? builtIn[game.id] { return note }
+        if vulkanShaderGames.contains(game.id) { return vulkanShaderNote }
         if game.requiredLauncher == .ubisoft { return needsUbisoftConnect }
         if game.installsThroughEAApp { return installsThroughEAApp }
         if let note = PlayStationLinking.note(for: game) { return note }
